@@ -17,9 +17,9 @@
     <header class="bg-blue-900 text-white p-4 sticky top-0 z-50 shadow-lg">
         <div class="flex justify-between items-center mb-3">
             <h1 class="font-bold text-lg tracking-tight">ITALL CAMPO</h1>
-            <span id="contagem-produtos" class="text-[10px] bg-blue-700 px-2 py-1 rounded tracking-widest uppercase">Sincronizando Estoque...</span>
+            <span id="contagem-produtos" class="text-[10px] bg-blue-700 px-2 py-1 rounded tracking-widest uppercase">Sincronizando...</span>
         </div>
-        <input type="text" id="busca-produto" oninput="render()" placeholder="Buscar mercadoria..." class="w-full p-3 rounded-xl text-black text-sm outline-none shadow-inner">
+        <input type="text" id="busca-produto" oninput="render()" placeholder="Buscar mercadoria na Itall..." class="w-full p-3 rounded-xl text-black text-sm shadow-inner outline-none">
     </header>
 
     <main class="p-4 space-y-4">
@@ -34,7 +34,7 @@
         <div id="lista-produtos" class="grid grid-cols-1 gap-2">
             <div class="text-center p-10 bg-white rounded-2xl border border-dashed border-gray-300">
                 <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-900 mx-auto mb-3"></div>
-                <p class="text-gray-500 text-sm">Acessando Saldos Omie...</p>
+                <p class="text-gray-500 text-sm">Consultando Estoque Real Omie...</p>
             </div>
         </div>
     </main>
@@ -49,20 +49,42 @@
     </div>
 
     <script>
+        // CONFIGURAÇÕES ITALL COMÉRCIO
         const OMIE_CONFIG = { 
             app_key: '4695613971048', 
             app_secret: 'adcacd22b1c64d9520965dac570b3afd' 
         };
         const PROXY = "https://cors-anywhere.herokuapp.com/";
         let produtos = [];
-        let estoque = {};
+        let estoqueSaldos = {};
         let carrinho = {};
 
-        async function carregarDadosCompletos() {
+        async function sincronizarTudo() {
             try {
-                // 1. CARREGAR PRODUTOS (Preços e Fotos)
-                const urlProd = "https://app.omie.com.br/api/v1/geral/produtos/";
-                const resProd = await fetch(PROXY + urlProd, {
+                const dataHoje = new Date().toLocaleDateString('pt-BR');
+
+                // 1. BUSCAR ESTOQUE REAL (ListarPosEstoque da sua documentação)
+                const resEst = await fetch(PROXY + "https://app.omie.com.br/api/v1/estoque/consulta/", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        "call": "ListarPosEstoque",
+                        "app_key": OMIE_CONFIG.app_key, "app_secret": OMIE_CONFIG.app_secret,
+                        "param": [{
+                            "nPagina": 1, "nRegPorPagina": 500, 
+                            "dDataPosicao": dataHoje, "cExibeTodos": "S", "codigo_local_estoque": 0
+                        }]
+                    })
+                });
+                const dataEst = await resEst.json();
+
+                // Mapeia os saldos usando nCodProd
+                if(dataEst.produtos) {
+                    dataEst.produtos.forEach(item => { estoqueSaldos[item.nCodProd] = item.nSaldo; });
+                }
+
+                // 2. BUSCAR DADOS DOS PRODUTOS (Preços e Fotos)
+                const resProd = await fetch(PROXY + "https://app.omie.com.br/api/v1/geral/produtos/", {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -73,37 +95,19 @@
                 });
                 const dataProd = await resProd.json();
 
-                // 2. CARREGAR ESTOQUE (Saldo Físico e Reservas) conforme doc ConsultaEstoque
-                const urlEst = "https://app.omie.com.br/api/v1/estoque/consulta/";
-                const resEst = await fetch(PROXY + urlEst, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        "call": "ListarPosEstoque", // Conforme documentação enviada
-                        "app_key": OMIE_CONFIG.app_key, "app_secret": OMIE_CONFIG.app_secret,
-                        "param": [{"nPagina": 1, "nRegPorPagina": 500, "dDataPosicao": new Date().toLocaleDateString('pt-BR'), "cExibeTodos": "S"}]
-                    })
-                });
-                const dataEst = await resEst.json();
-
-                // Mapear saldos para acesso rápido
-                if(dataEst.produtos) {
-                    dataEst.produtos.forEach(e => { estoque[e.nCodProd] = e.nSaldo; });
-                }
-
                 if (dataProd.produto_servico_cadastro) {
                     produtos = dataProd.produto_servico_cadastro.map(p => ({
                         id: p.codigo_produto,
                         nome: p.descricao,
                         preco: p.valor_unitario || 0,
                         foto: p.imagens && p.imagens.length > 0 ? p.imagens[0].url_imagem : 'https://via.placeholder.com/100?text=ITALL',
-                        saldo: estoque[p.codigo_produto] || 0
+                        saldo: estoqueSaldos[p.codigo_produto] || 0 // Cruza ID com saldo real
                     }));
                     document.getElementById('contagem-produtos').innerText = `${produtos.length} ITENS DE REVENDA`;
                     render();
                 }
             } catch (e) {
-                document.getElementById('lista-produtos').innerHTML = `<p class="text-center p-4 text-red-500">Falha ao sincronizar. Verifique o Proxy.</p>`;
+                document.getElementById('lista-produtos').innerHTML = `<p class="text-center p-4 text-red-500 font-bold">Falha ao sincronizar Omie. Verifique o Proxy.</p>`;
             }
         }
 
@@ -132,7 +136,7 @@
                     <div class="flex-1">
                         <h3 class="font-bold text-gray-800 text-[10px] uppercase leading-tight">${p.nome}</h3>
                         <p class="text-blue-600 font-black text-xs">R$ ${p.preco.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-                        <p class="text-[9px] ${p.saldo > 0 ? 'text-green-600' : 'text-red-500'} font-bold">Estoque: ${p.saldo}</p>
+                        <p class="text-[9px] ${p.saldo > 0 ? 'text-green-600' : 'text-red-500'} font-bold italic">Estoque: ${p.saldo}</p>
                     </div>
                     <div class="flex items-center gap-2">
                         <button onclick="add('${p.id}', -1)" class="bg-gray-100 text-gray-400 w-8 h-8 rounded-lg font-bold shadow-sm">-</button>
@@ -167,16 +171,22 @@
             doc.text("ITALL COMÉRCIO - ORÇAMENTO", 14, 20);
             doc.setFontSize(10);
             doc.text(`CLIENTE: ${cliente}`, 14, 28);
+            doc.text(`DATA: ${new Date().toLocaleDateString()}`, 14, 34);
             
             const rows = Object.keys(carrinho).map(id => {
                 const p = produtos.find(prod => prod.id == id);
-                return [p.nome, carrinho[id], p.preco.toFixed(2), (p.preco * carrinho[id]).toFixed(2)];
+                return [p.nome, carrinho[id], `R$ ${p.preco.toFixed(2)}`, `R$ ${(p.preco * carrinho[id]).toFixed(2)}`];
             });
-            doc.autoTable({ startY: 35, head: [['Produto', 'Qtd', 'Unit.', 'Total']], body: rows });
+            doc.autoTable({ 
+                startY: 40, 
+                head: [['PRODUTO', 'QTD', 'UNIT.', 'TOTAL']], 
+                body: rows,
+                headStyles: { fillColor: [30, 58, 138] }
+            });
             doc.save(`Orcamento_Itall_${cliente.split(' ')[0]}.pdf`);
         }
 
-        carregarDadosCompletos();
+        sincronizarTudo();
     </script>
 </body>
 </html>
