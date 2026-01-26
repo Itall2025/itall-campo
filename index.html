@@ -67,18 +67,18 @@
                 console.log('Exemplo de produto:', dataEst.produtos?.[0]);
                 
                 if (dataEst.produtos && dataEst.produtos.length > 0) {
-                    // Usar os produtos do estoque com imagens
+                    // Usar os produtos do estoque - CAMPO CORRETO É nPrecoUnitario
                     produtos = dataEst.produtos.map(p => {
                         const produto = {
                             id: p.cCodigo,
                             nome: p.cDescricao,
-                            preco: p.nValorUnitario || p.valor_unitario || 0,
-                            foto: p.url_imagem || 'https://via.placeholder.com/100?text=SEM+FOTO',
+                            preco: p.nPrecoUnitario || 0,
+                            foto: p.url_imagem || null,
                             saldo: p.nSaldo || 0
                         };
-                        console.log('Produto mapeado:', produto.nome, 'Preço:', produto.preco);
                         return produto;
                     });
+                    console.log('Primeiro produto com preço:', produtos[0]);
                     document.getElementById('contagem-produtos').innerText = `${produtos.length} ITENS ATIVOS`;
                     render();
                 } else {

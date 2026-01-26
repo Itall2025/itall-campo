@@ -27,13 +27,13 @@ app.post('/api/estoque', async (req, res) => {
         }
         
         const hoje = new Date().toLocaleDateString('pt-BR');
-        console.log('📦 Buscando TODOS os produtos + imagens...');
+        console.log('📦 Buscando TODOS os produtos do estoque...');
         
         let todosOsProdutos = [];
         let paginaAtual = 1;
         let totalPaginas = 1;
         
-        // Passo 1: Loop para buscar todas as páginas de ESTOQUE
+        // Buscar todas as páginas de ESTOQUE
         while (paginaAtual <= totalPaginas) {
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 30000);
@@ -67,53 +67,11 @@ app.post('/api/estoque', async (req, res) => {
             paginaAtual++;
         }
         
-        // Passo 2: Buscar produtos com IMAGENS
-        console.log('  → Buscando imagens dos produtos...');
-        let mapaImagens = {};
-        
-        try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 30000);
-            
-            const response = await fetch("https://app.omie.com.br/api/v1/geral/produtos/", {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'Mozilla/5.0'
-                },
-                signal: controller.signal,
-                body: JSON.stringify({
-                    "call": "ListarProdutos",
-                    "app_key": CONFIG.key,
-                    "app_secret": CONFIG.secret,
-                    "param": [{"pagina": 1, "registros_por_pagina": 500, "inativo": "N"}]
-                })
-            });
-            clearTimeout(timeout);
-            
-            const dataProd = await response.json();
-            if (dataProd.produto_servico_cadastro) {
-                dataProd.produto_servico_cadastro.forEach(p => {
-                    const imagem = p.imagens && p.imagens.length > 0 ? p.imagens[0].url_imagem : null;
-                    mapaImagens[p.codigo_produto] = imagem;
-                });
-                console.log(`  ✅ Imagens carregadas para ${Object.keys(mapaImagens).length} produtos`);
-            }
-        } catch (err) {
-            console.log('  ⚠️ Não conseguiu buscar imagens, continuando sem elas');
-        }
-        
-        // Passo 3: Juntar estoque com imagens
-        const produtosComImagens = todosOsProdutos.map(p => ({
-            ...p,
-            url_imagem: mapaImagens[p.cCodigo] || null
-        }));
-        
-        console.log(`✅ Total de produtos carregados: ${produtosComImagens.length}`);
+        console.log(`✅ Total de ${todosOsProdutos.length} produtos carregados`);
         
         const response = {
-            nTotRegistros: produtosComImagens.length,
-            produtos: produtosComImagens
+            nTotRegistros: todosOsProdutos.length,
+            produtos: todosOsProdutos
         };
         
         // Salvar em cache
