@@ -51,19 +51,19 @@
     </div>
 
     <script>
-        // CONFIGURAÇÃO ITALL COMÉRCIO - Chaves corrigidas
+        // CONFIGURAÇÃO ITALL COMÉRCIO
         const OMIE_CONFIG = {
-            app_key: '4695613971048'
+            app_key: '4695613971048',
             app_secret: 'adcacd22b1c64d9520965dac570b3afd'
         };
 
         let produtos = [];
         let carrinho = {};
+        const PROXY = "https://cors-anywhere.herokuapp.com/";
 
+        // 1. CARREGAR ESTOQUE OMIE
         async function carregarProdutosOmie() {
-            const proxy = "https://cors-anywhere.herokuapp.com/";
-            const endpoint = proxy + "https://app.omie.com.br/api/v1/geral/produtos/";
-            
+            const endpoint = PROXY + "https://app.omie.com.br/api/v1/geral/produtos/";
             const payload = {
                 "call": "ListarProdutos",
                 "app_key": OMIE_CONFIG.app_key,
@@ -78,7 +78,6 @@
                     body: JSON.stringify(payload)
                 });
                 const data = await response.json();
-                
                 if (data.produto_servico_resumido) {
                     produtos = data.produto_servico_resumido.map(p => ({
                         id: p.codigo_produto,
@@ -90,33 +89,31 @@
                     render();
                 }
             } catch (e) {
-                document.getElementById('lista-produtos').innerHTML = `<p class="text-red-500 text-center p-4">Erro na conexão. Certifique-se de que liberou o acesso no link do Proxy.</p>`;
+                document.getElementById('lista-produtos').innerHTML = `<p class="text-red-500 text-center p-4">Erro na conexão. Verifique o acesso ao Proxy.</p>`;
             }
         }
 
+        // 2. BUSCAR CNPJ COM PROXY
         async function buscarCNPJ() {
             const cnpj = document.getElementById('cnpj-input').value;
             if(cnpj.length < 14) return;
+            const url = `https://publica.cnpj.ws/cnpj/${cnpj}`;
+
             try {
-                const res = await fetch(`https://publica.cnpj.ws/cnpj/${cnpj}`);
+                const res = await fetch(PROXY + url);
                 const data = await res.json();
-                document.getElementById('razao-social').value = data.estabelecimento.razao_social || "Não encontrado";
+                const razao = data.estabelecimento?.razao_social || data.razao_social || "CNPJ não encontrado";
+                document.getElementById('razao-social').value = razao;
             } catch (e) {
-                alert("Erro ao buscar CNPJ");
+                alert("Erro ao buscar CNPJ. Verifique se o acesso ao Proxy está ativo.");
             }
         }
 
         function render() {
-            const termoBusca = document.getElementById('busca-produto').value.toLowerCase();
+            const termo = document.getElementById('busca-produto').value.toLowerCase();
             const lista = document.getElementById('lista-produtos');
             lista.innerHTML = '';
-            
-            const filtrados = produtos.filter(p => p.nome.toLowerCase().includes(termoBusca));
-
-            if (filtrados.length === 0) {
-                lista.innerHTML = '<p class="text-center text-gray-500 p-4">Nenhum produto encontrado.</p>';
-                return;
-            }
+            const filtrados = produtos.filter(p => p.nome.toLowerCase().includes(termo));
 
             filtrados.forEach(p => {
                 const card = document.createElement('div');
@@ -129,10 +126,9 @@
                     </div>
                     <div class="flex items-center gap-3">
                         <button onclick="add('${p.id}', -1)" class="bg-gray-200 w-8 h-8 rounded-full font-bold">-</button>
-                        <span id="qtd-${p.id}" class="font-bold text-blue-900">${carrinho[p.id] || 0}</span>
+                        <span class="font-bold text-blue-900">${carrinho[p.id] || 0}</span>
                         <button onclick="add('${p.id}', 1)" class="bg-blue-900 text-white w-8 h-8 rounded-full font-bold">+</button>
-                    </div>
-                `;
+                    </div>`;
                 lista.appendChild(card);
             });
         }
@@ -140,49 +136,31 @@
         function add(id, delta) {
             carrinho[id] = (carrinho[id] || 0) + delta;
             if(carrinho[id] <= 0) delete carrinho[id];
-            
-            const span = document.getElementById(`qtd-${id}`);
-            if(span) span.innerText = carrinho[id] || 0;
-            
+            render();
             atualizarTotal();
         }
 
         function atualizarTotal() {
-            let totalComIpi = 0;
+            let total = 0;
             Object.keys(carrinho).forEach(id => {
                 const p = produtos.find(prod => prod.id == id);
-                const valorIpi = p.preco * (p.ipi / 100);
-                totalComIpi += (p.preco + valorIpi) * carrinho[id];
+                total += (p.preco * (1 + p.ipi/100)) * carrinho[id];
             });
-            document.getElementById('total-geral').innerText = `R$ ${totalComIpi.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
+            document.getElementById('total-geral').innerText = `R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
         }
 
         function gerarOrcamento() {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
             const cliente = document.getElementById('razao-social').value || "Cliente Novo";
-            
-            doc.setFontSize(16);
             doc.text("ORÇAMENTO - ITALL COMÉRCIO", 10, 20);
-            doc.setFontSize(10);
             doc.text(`Cliente: ${cliente}`, 10, 30);
-            doc.text(`Data: ${new Date().toLocaleDateString()}`, 10, 35);
-
-            const rows = [];
-            Object.keys(carrinho).forEach(id => {
+            const rows = Object.keys(carrinho).map(id => {
                 const p = produtos.find(prod => prod.id == id);
-                const subtotal = (p.preco * (1 + p.ipi/100) * carrinho[id]);
-                rows.push([p.nome, carrinho[id], p.preco.toFixed(2), p.ipi + "%", subtotal.toFixed(2)]);
+                return [p.nome, carrinho[id], p.preco.toFixed(2), p.ipi + "%", (p.preco * (1 + p.ipi/100) * carrinho[id]).toFixed(2)];
             });
-
-            doc.autoTable({
-                startY: 40,
-                head: [['Produto', 'Qtd', 'Unit.', 'IPI', 'Subtotal (c/ IPI)']],
-                body: rows,
-            });
-
-            doc.save(`Orcamento_Itall_${cliente.split(' ')[0]}.pdf`);
-            alert("Orçamento gerado com sucesso!");
+            doc.autoTable({ startY: 40, head: [['Produto', 'Qtd', 'Unit.', 'IPI', 'Subtotal']], body: rows });
+            doc.save(`Orcamento_${cliente.split(' ')[0]}.pdf`);
         }
 
         carregarProdutosOmie();
