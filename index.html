@@ -57,64 +57,33 @@
 
         async function sincronizar() {
             try {
-                const hoje = new Date().toLocaleDateString('pt-BR');
-                
-                // Usar modo no-cors ou tentar direto
-                const resEst = await fetch("https://app.omie.com.br/api/v1/estoque/consulta/", {
+                const resEst = await fetch("/api/estoque", {
                     method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Access-Control-Allow-Origin': '*'
-                    },
-                    body: JSON.stringify({
-                        "call": "ListarPosEstoque",
-                        "app_key": CONFIG.key, "app_secret": CONFIG.secret,
-                        "param": [{"nPagina": 1, "nRegPorPagina": 500, "dDataPosicao": hoje, "cExibeTodos": "S", "codigo_local_estoque": 0}]
-                    })
-                }).catch(err => {
-                    console.log('Erro estoque direto, tentando alternativa...', err);
-                    return null;
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
                 });
-                
-                if(resEst) {
-                    const dataEst = await resEst.json();
-                    if(dataEst.produtos) dataEst.produtos.forEach(e => { estoqueSaldos[e.nCodProd] = e.nSaldo; });
-                }
+                const dataEst = await resEst.json();
+                if(dataEst.produtos) dataEst.produtos.forEach(e => { estoqueSaldos[e.nCodProd] = e.nSaldo; });
 
-                const resProd = await fetch("https://app.omie.com.br/api/v1/geral/produtos/", {
+                const resProd = await fetch("/api/produtos", {
                     method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Access-Control-Allow-Origin': '*'
-                    },
-                    body: JSON.stringify({
-                        "call": "ListarProdutos",
-                        "app_key": CONFIG.key, "app_secret": CONFIG.secret,
-                        "param": [{"pagina": 1, "registros_por_pagina": 500, "inativo": "N"}]
-                    })
-                }).catch(err => {
-                    console.log('Erro produtos direto, tentando alternativa...', err);
-                    return null;
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
                 });
-                
-                if(resProd) {
-                    const dataProd = await resProd.json();
+                const dataProd = await resProd.json();
 
-                    if (dataProd.produto_servico_cadastro) {
-                        produtos = dataProd.produto_servico_cadastro.map(p => ({
-                            id: p.codigo_produto,
-                            nome: p.descricao,
-                            preco: p.valor_unitario || 0,
-                            foto: p.imagens?.[0]?.url_imagem || 'https://via.placeholder.com/100?text=ITALL',
-                            saldo: estoqueSaldos[p.codigo_produto] || 0
-                        }));
-                        document.getElementById('contagem-produtos').innerText = `${produtos.length} ITENS ATIVOS`;
-                        render();
-                    } else {
-                        throw new Error('Resposta vazia da API');
-                    }
+                if (dataProd.produto_servico_cadastro) {
+                    produtos = dataProd.produto_servico_cadastro.map(p => ({
+                        id: p.codigo_produto,
+                        nome: p.descricao,
+                        preco: p.valor_unitario || 0,
+                        foto: p.imagens?.[0]?.url_imagem || 'https://via.placeholder.com/100?text=ITALL',
+                        saldo: estoqueSaldos[p.codigo_produto] || 0
+                    }));
+                    document.getElementById('contagem-produtos').innerText = `${produtos.length} ITENS ATIVOS`;
+                    render();
                 } else {
-                    throw new Error('Falha ao conectar com a API Omie');
+                    throw new Error('Resposta vazia da API');
                 }
             } catch (e) {
                 console.error('Erro na sincronização:', e);
@@ -157,7 +126,7 @@
         async function buscarCNPJ() {
             const cnpj = document.getElementById('cnpj-input').value;
             try {
-                const res = await fetch(`https://publica.cnpj.ws/cnpj/${cnpj}`);
+                const res = await fetch(`/api/cnpj/${cnpj}`);
                 const data = await res.json();
                 document.getElementById('razao-social').value = data.estabelecimento?.razao_social || data.razao_social || "Não encontrado";
             } catch (e) { 
