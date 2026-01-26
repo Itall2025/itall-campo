@@ -20,13 +20,7 @@
             <h1 class="font-bold text-lg tracking-tight">ITALL CAMPO</h1>
             <span class="text-[10px] bg-blue-700 px-2 py-1 rounded">ERP OMIE INTEGRADO</span>
         </div>
-        
-        <select id="tabela-preco" class="w-full bg-blue-800 p-2 rounded-lg text-sm border-none mb-2 text-white">
-            <option value="1">Tabela Padrão (Varejo)</option>
-            <option value="2">Tabela Atacado / Revenda</option>
-        </select>
-        
-        <input type="text" id="busca-produto" placeholder="Buscar produto na Itall..." class="w-full p-2 rounded-lg text-black text-sm">
+        <input type="text" id="busca-produto" oninput="render()" placeholder="Buscar produto na Itall..." class="w-full p-2 rounded-lg text-black text-sm">
     </header>
 
     <main class="p-4 space-y-4">
@@ -39,12 +33,15 @@
         </section>
 
         <div id="lista-produtos" class="grid grid-cols-1 gap-3">
-            <p class="text-center text-gray-500">Carregando estoque da Omie...</p>
+            <div class="text-center p-10">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-900 mx-auto mb-2"></div>
+                <p class="text-gray-500">Conectando ao estoque da Itall...</p>
+            </div>
         </div>
     </main>
 
     <div class="fixed bottom-0 left-0 right-0 bg-white border-t p-4 shadow-[0_-5px_15px_rgba(0,0,0,0.1)]">
-        <div class="flex justify-between mb-2 font-bold text-blue-900">
+        <div class="flex justify-between mb-2 font-bold text-blue-900 text-lg">
             <span>Total com IPI:</span>
             <span id="total-geral">R$ 0,00</span>
         </div>
@@ -54,7 +51,7 @@
     </div>
 
     <script>
-        // --- CONFIGURAÇÃO OMIE - COLOQUE SUAS CHAVES AQUI ---
+        // CONFIGURAÇÃO ITALL COMÉRCIO - Chaves corrigidas
         const OMIE_CONFIG = {
             app_key: '4695613971048',
             app_secret: 'adcacd22b1c64d9520965dac570b3afd'
@@ -63,110 +60,129 @@
         let produtos = [];
         let carrinho = {};
 
-        // 1. CARREGAR PRODUTOS DA OMIE
         async function carregarProdutosOmie() {
-            const endpoint = "https://app.omie.com.br/api/v1/geral/produtos/";
+            const proxy = "https://cors-anywhere.herokuapp.com/";
+            const endpoint = proxy + "https://app.omie.com.br/api/v1/geral/produtos/";
+            
             const payload = {
                 "call": "ListarProdutos",
                 "app_key": OMIE_CONFIG.app_key,
                 "app_secret": OMIE_CONFIG.app_secret,
-                "param": [{ "pagina": 1, "registros_por_pagina": 50, "filtrar_apenas_omiepdv": "N" }]
+                "param": [{ "pagina": 1, "registros_por_pagina": 100, "filtrar_apenas_omiepdv": "N" }]
             };
 
             try {
-                const response = await fetch(endpoint, { method: 'POST', body: JSON.stringify(payload)});
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
                 const data = await response.json();
                 
-                produtos = data.produto_servico_resumido.map(p => ({
-                    id: p.codigo_produto,
-                    nome: p.descricao,
-                    preco: p.valor_unitario || 0,
-                    estoque: p.quantidade_estoque || 0,
-                    ipi: p.aliquota_ipi || 0
-                }));
-                render();
+                if (data.produto_servico_resumido) {
+                    produtos = data.produto_servico_resumido.map(p => ({
+                        id: p.codigo_produto,
+                        nome: p.descricao,
+                        preco: p.valor_unitario || 0,
+                        estoque: p.quantidade_estoque || 0,
+                        ipi: p.aliquota_ipi || 0
+                    }));
+                    render();
+                }
             } catch (e) {
-                console.error(e);
-                document.getElementById('lista-produtos').innerHTML = "Erro ao carregar produtos.";
+                document.getElementById('lista-produtos').innerHTML = `<p class="text-red-500 text-center p-4">Erro na conexão. Certifique-se de que liberou o acesso no link do Proxy.</p>`;
             }
         }
 
-        // 2. BUSCA DE CNPJ (API Pública)
         async function buscarCNPJ() {
             const cnpj = document.getElementById('cnpj-input').value;
             if(cnpj.length < 14) return;
-            const res = await fetch(`https://publica.cnpj.ws/cnpj/${cnpj}`);
-            const data = await res.json();
-            document.getElementById('razao-social').value = data.estabelecimento.razao_social || "Não encontrado";
+            try {
+                const res = await fetch(`https://publica.cnpj.ws/cnpj/${cnpj}`);
+                const data = await res.json();
+                document.getElementById('razao-social').value = data.estabelecimento.razao_social || "Não encontrado";
+            } catch (e) {
+                alert("Erro ao buscar CNPJ");
+            }
         }
 
-        // 3. RENDERIZAR TELA
         function render() {
+            const termoBusca = document.getElementById('busca-produto').value.toLowerCase();
             const lista = document.getElementById('lista-produtos');
             lista.innerHTML = '';
             
-            produtos.forEach(p => {
+            const filtrados = produtos.filter(p => p.nome.toLowerCase().includes(termoBusca));
+
+            if (filtrados.length === 0) {
+                lista.innerHTML = '<p class="text-center text-gray-500 p-4">Nenhum produto encontrado.</p>';
+                return;
+            }
+
+            filtrados.forEach(p => {
                 const card = document.createElement('div');
-                card.className = 'product-card bg-white p-3 rounded-lg flex justify-between items-center';
+                card.className = 'product-card bg-white p-3 rounded-lg flex justify-between items-center shadow-sm';
                 card.innerHTML = `
                     <div class="flex-1">
                         <h3 class="font-bold text-gray-800 text-sm">${p.nome}</h3>
-                        <p class="text-blue-600 font-bold">R$ ${p.preco.toFixed(2)} <span class="text-[10px] text-gray-400">+${p.ipi}% IPI</span></p>
-                        <p class="text-[10px] text-gray-500">Estoque: ${p.estoque}</p>
+                        <p class="text-blue-600 font-bold">R$ ${p.preco.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                        <p class="text-[10px] text-gray-400">IPI: ${p.ipi}% | Est: ${p.estoque}</p>
                     </div>
                     <div class="flex items-center gap-3">
                         <button onclick="add('${p.id}', -1)" class="bg-gray-200 w-8 h-8 rounded-full font-bold">-</button>
-                        <span id="qtd-${p.id}" class="font-bold">${carrinho[p.id] || 0}</span>
-                        <button onclick="add('${p.id}', 1)" class="bg-blue-100 text-blue-700 w-8 h-8 rounded-full font-bold">+</button>
+                        <span id="qtd-${p.id}" class="font-bold text-blue-900">${carrinho[p.id] || 0}</span>
+                        <button onclick="add('${p.id}', 1)" class="bg-blue-900 text-white w-8 h-8 rounded-full font-bold">+</button>
                     </div>
                 `;
                 lista.appendChild(card);
             });
-            atualizarTotal();
         }
 
         function add(id, delta) {
             carrinho[id] = (carrinho[id] || 0) + delta;
             if(carrinho[id] <= 0) delete carrinho[id];
-            render();
+            
+            const span = document.getElementById(`qtd-${id}`);
+            if(span) span.innerText = carrinho[id] || 0;
+            
+            atualizarTotal();
         }
 
         function atualizarTotal() {
-            let total = 0;
+            let totalComIpi = 0;
             Object.keys(carrinho).forEach(id => {
                 const p = produtos.find(prod => prod.id == id);
-                const precoComIpi = p.preco * (1 + (p.ipi / 100));
-                total += precoComIpi * carrinho[id];
+                const valorIpi = p.preco * (p.ipi / 100);
+                totalComIpi += (p.preco + valorIpi) * carrinho[id];
             });
-            document.getElementById('total-geral').innerText = `R$ ${total.toFixed(2)}`;
+            document.getElementById('total-geral').innerText = `R$ ${totalComIpi.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
         }
 
-        // 4. GERAR PDF E WHATSAPP
         function gerarOrcamento() {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
-            const cliente = document.getElementById('razao-social').value || "Cliente Não Identificado";
+            const cliente = document.getElementById('razao-social').value || "Cliente Novo";
             
-            doc.setFontSize(18);
+            doc.setFontSize(16);
             doc.text("ORÇAMENTO - ITALL COMÉRCIO", 10, 20);
-            doc.setFontSize(12);
+            doc.setFontSize(10);
             doc.text(`Cliente: ${cliente}`, 10, 30);
-            doc.text(`Data: ${new Date().toLocaleDateString()}`, 10, 37);
+            doc.text(`Data: ${new Date().toLocaleDateString()}`, 10, 35);
 
             const rows = [];
             Object.keys(carrinho).forEach(id => {
                 const p = produtos.find(prod => prod.id == id);
-                rows.push([p.nome, carrinho[id], `R$ ${p.preco.toFixed(2)}`, `${p.ipi}%`, `R$ ${(p.preco * (1 + p.ipi/100) * carrinho[id]).toFixed(2)}`]);
+                const subtotal = (p.preco * (1 + p.ipi/100) * carrinho[id]);
+                rows.push([p.nome, carrinho[id], p.preco.toFixed(2), p.ipi + "%", subtotal.toFixed(2)]);
             });
 
             doc.autoTable({
-                startY: 45,
-                head: [['Produto', 'Qtd', 'Unit.', 'IPI', 'Subtotal']],
+                startY: 40,
+                head: [['Produto', 'Qtd', 'Unit.', 'IPI', 'Subtotal (c/ IPI)']],
                 body: rows,
             });
 
-            doc.save(`Orcamento_Itall_${cliente}.pdf`);
-            alert("PDF Gerado! Agora você pode compartilhar via WhatsApp.");
+            doc.save(`Orcamento_Itall_${cliente.split(' ')[0]}.pdf`);
+            alert("Orçamento gerado com sucesso!");
         }
 
         carregarProdutosOmie();
