@@ -63,27 +63,26 @@
                     body: JSON.stringify({})
                 });
                 const dataEst = await resEst.json();
-                if(dataEst.produtos) dataEst.produtos.forEach(e => { estoqueSaldos[e.nCodProd] = e.nSaldo; });
-
-                const resProd = await fetch("/api/produtos", {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({})
-                });
-                const dataProd = await resProd.json();
-
-                if (dataProd.produto_servico_cadastro) {
-                    produtos = dataProd.produto_servico_cadastro.map(p => ({
-                        id: p.codigo_produto,
-                        nome: p.descricao,
-                        preco: p.valor_unitario || 0,
-                        foto: p.imagens?.[0]?.url_imagem || 'https://via.placeholder.com/100?text=ITALL',
-                        saldo: estoqueSaldos[p.codigo_produto] || 0
-                    }));
+                console.log('Estoque recebido:', dataEst.produtos?.length || 0, 'produtos');
+                console.log('Exemplo de produto:', dataEst.produtos?.[0]);
+                
+                if (dataEst.produtos && dataEst.produtos.length > 0) {
+                    // Usar os produtos do estoque com imagens
+                    produtos = dataEst.produtos.map(p => {
+                        const produto = {
+                            id: p.cCodigo,
+                            nome: p.cDescricao,
+                            preco: p.nValorUnitario || p.valor_unitario || 0,
+                            foto: p.url_imagem || 'https://via.placeholder.com/100?text=SEM+FOTO',
+                            saldo: p.nSaldo || 0
+                        };
+                        console.log('Produto mapeado:', produto.nome, 'Preço:', produto.preco);
+                        return produto;
+                    });
                     document.getElementById('contagem-produtos').innerText = `${produtos.length} ITENS ATIVOS`;
                     render();
                 } else {
-                    throw new Error('Resposta vazia da API');
+                    throw new Error('Nenhum produto encontrado no estoque');
                 }
             } catch (e) {
                 console.error('Erro na sincronização:', e);
@@ -95,13 +94,22 @@
             const termo = document.getElementById('busca-produto').value.toLowerCase();
             const lista = document.getElementById('lista-produtos');
             lista.innerHTML = '';
+            
             produtos.filter(p => p.nome.toLowerCase().includes(termo)).forEach(p => {
                 const card = document.createElement('div');
                 card.className = 'bg-white p-3 rounded-2xl flex gap-3 items-center shadow-sm border border-gray-100';
-                card.innerHTML = `<img src="${p.foto}" class="product-img rounded border">
-                    <div class="flex-1 text-left"><h3 class="font-bold text-gray-800 text-[10px] uppercase leading-tight">${p.nome}</h3>
-                    <p class="text-blue-600 font-black text-sm">R$ ${p.preco.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-                    <p class="text-[9px] ${p.saldo > 0 ? 'text-green-600' : 'text-red-500'} font-bold">Estoque: ${p.saldo}</p></div>
+                const temFoto = p.foto && p.foto !== 'https://via.placeholder.com/100?text=SEM+FOTO';
+                card.innerHTML = `
+                    <div class="flex flex-col items-center gap-1">
+                        <img src="${p.foto}" class="product-img rounded border" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div class="w-16 h-16 rounded border bg-gray-100 items-center justify-center text-[8px] font-bold text-center p-1 text-gray-500" style="display:none;">SEM FOTO</div>
+                        <span class="text-[8px] text-gray-500 font-bold">${p.id}</span>
+                    </div>
+                    <div class="flex-1 text-left">
+                        <h3 class="font-bold text-gray-800 text-[11px] uppercase leading-tight mb-1">${p.nome}</h3>
+                        <p class="text-blue-600 font-black text-base">R$ ${p.preco.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                        <p class="text-[9px] ${p.saldo > 0 ? 'text-green-600' : 'text-red-500'} font-bold">Estoque: ${p.saldo}</p>
+                    </div>
                     <div class="flex items-center gap-2">
                         <button onclick="add('${p.id}', -1)" class="bg-gray-100 text-gray-400 w-8 h-8 rounded-lg font-bold">-</button>
                         <span class="font-bold text-blue-900 text-sm w-4 text-center">${carrinho[p.id] || 0}</span>
