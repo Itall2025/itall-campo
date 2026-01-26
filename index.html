@@ -7,39 +7,44 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
-    <style>.product-img { object-fit: contain; background: #fff; width: 60px; height: 60px; }</style>
+    <style>.product-img { object-fit: contain; background: #fff; width: 65px; height: 65px; }</style>
 </head>
 <body class="bg-gray-100 pb-44">
 
     <header class="bg-blue-900 text-white p-4 sticky top-0 z-50 shadow-lg">
         <div class="flex justify-between items-center mb-3">
-            <h1 class="font-bold text-lg tracking-tight">ITALL CAMPO</h1>
-            <span id="contagem-produtos" class="text-[10px] bg-blue-700 px-2 py-1 rounded uppercase">Sincronizando...</span>
+            <h1 class="font-bold text-lg tracking-tight italic">ITALL CAMPO</h1>
+            <span id="contagem-produtos" class="text-[9px] bg-blue-700 px-2 py-1 rounded-full uppercase font-bold">Sincronizando...</span>
         </div>
-        <input type="text" id="busca-produto" oninput="render()" placeholder="Filtrar mercadorias..." class="w-full p-3 rounded-xl text-black text-sm outline-none">
+        <input type="text" id="busca-produto" oninput="render()" placeholder="Buscar mercadoria na Itall..." class="w-full p-3 rounded-xl text-black text-sm outline-none shadow-inner">
     </header>
 
     <main class="p-4 space-y-4">
         <section class="bg-white p-4 rounded-2xl shadow-sm border-l-4 border-blue-600">
             <div class="flex gap-2 mb-2">
-                <input type="number" id="cnpj-input" placeholder="CNPJ do Cliente" class="flex-1 border p-3 rounded-lg text-sm bg-gray-50">
-                <button onclick="buscarCNPJ()" class="bg-blue-600 text-white px-5 rounded-lg font-bold text-xs uppercase">BUSCAR</button>
+                <input type="number" id="cnpj-input" placeholder="CNPJ do Cliente" class="flex-1 border p-3 rounded-lg text-sm bg-gray-50 outline-none">
+                <button onclick="buscarCNPJ()" class="bg-blue-600 active:bg-blue-800 text-white px-4 rounded-lg font-bold text-xs uppercase transition-all">BUSCAR</button>
             </div>
-            <input type="text" id="razao-social" placeholder="Razão Social" class="w-full border p-3 rounded-lg text-sm bg-gray-100 font-medium" readonly>
+            <input type="text" id="razao-social" placeholder="Razão Social" class="w-full border p-3 rounded-lg text-sm bg-gray-100 font-bold text-blue-900" readonly>
         </section>
 
         <div id="lista-produtos" class="grid grid-cols-1 gap-2">
             <div class="text-center p-10 bg-white rounded-2xl border border-dashed border-gray-300">
                 <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-900 mx-auto mb-3"></div>
-                <p class="text-gray-500 text-sm">Acessando Omie via Proxy...</p>
+                <p class="text-gray-500 text-xs">Consultando Estoque e Preços...</p>
             </div>
         </div>
     </main>
 
-    <div class="fixed bottom-0 left-0 right-0 bg-white border-t p-4 shadow-lg rounded-t-3xl">
+    <div class="fixed bottom-0 left-0 right-0 bg-white border-t p-4 shadow-2xl rounded-t-3xl">
         <div class="flex justify-between items-center mb-4 px-2">
-            <p class="text-2xl font-black text-blue-900" id="total-geral">R$ 0,00</p>
-            <button onclick="gerarOrcamento()" class="bg-green-600 text-white px-8 py-4 rounded-2xl font-black text-lg shadow-lg">GERAR PDF</button>
+            <div>
+                <p class="text-[10px] text-gray-400 font-bold uppercase">Total Estimado</p>
+                <p class="text-2xl font-black text-blue-900" id="total-geral">R$ 0,00</p>
+            </div>
+            <button onclick="gerarEEnviar()" class="bg-green-600 active:bg-green-800 text-white px-6 py-4 rounded-2xl font-black text-sm shadow-lg transition-all flex items-center gap-2">
+                FINALIZAR PEDIDO
+            </button>
         </div>
     </div>
 
@@ -50,11 +55,11 @@
         let estoqueSaldos = {};
         let carrinho = {};
 
-        async function carregarDados() {
+        async function sincronizar() {
             try {
                 const hoje = new Date().toLocaleDateString('pt-BR');
                 
-                // 1. ESTOQUE (Timeout de 5s para não travar a vitrine)
+                // 1. ESTOQUE REAL (LOCAL 0)
                 const resEst = await fetch(PROXY + "https://app.omie.com.br/api/v1/estoque/consulta/", {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -67,7 +72,7 @@
                 const dataEst = await resEst.json();
                 if(dataEst.produtos) dataEst.produtos.forEach(e => { estoqueSaldos[e.nCodProd] = e.nSaldo; });
 
-                // 2. PRODUTOS
+                // 2. PRODUTOS (REVENDA TIPO 00)
                 const resProd = await fetch(PROXY + "https://app.omie.com.br/api/v1/geral/produtos/", {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -87,11 +92,11 @@
                         foto: p.imagens?.[0]?.url_imagem || 'https://via.placeholder.com/100?text=ITALL',
                         saldo: estoqueSaldos[p.codigo_produto] || 0
                     }));
-                    document.getElementById('contagem-produtos').innerText = `${produtos.length} ITENS`;
+                    document.getElementById('contagem-produtos').innerText = `${produtos.length} ITENS DE REVENDA`;
                     render();
                 }
             } catch (e) {
-                document.getElementById('lista-produtos').innerHTML = `<p class="text-center p-4 text-red-500">Erro de Proxy. Ative em: cors-anywhere.herokuapp.com/corsdemo</p>`;
+                document.getElementById('lista-produtos').innerHTML = `<p class="text-center p-4 text-red-500 font-bold">Erro de Proxy. Ative no link do cors-anywhere.</p>`;
             }
         }
 
@@ -104,12 +109,12 @@
                 card.className = 'bg-white p-3 rounded-2xl flex gap-3 items-center shadow-sm border border-gray-100';
                 card.innerHTML = `<img src="${p.foto}" class="product-img rounded-lg border">
                     <div class="flex-1"><h3 class="font-bold text-gray-800 text-[10px] uppercase leading-tight">${p.nome}</h3>
-                    <p class="text-blue-600 font-black text-xs">R$ ${p.preco.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-                    <p class="text-[9px] ${p.saldo > 0 ? 'text-green-600' : 'text-red-500'} font-bold">Saldo: ${p.saldo}</p></div>
+                    <p class="text-blue-600 font-black text-sm">R$ ${p.preco.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                    <p class="text-[9px] ${p.saldo > 0 ? 'text-green-600' : 'text-red-500'} font-black">Estoque: ${p.saldo}</p></div>
                     <div class="flex items-center gap-2">
-                    <button onclick="add('${p.id}', -1)" class="bg-gray-100 text-gray-400 w-8 h-8 rounded-lg font-bold">-</button>
-                    <span class="font-bold text-blue-900 text-xs w-4 text-center">${carrinho[p.id] || 0}</span>
-                    <button onclick="add('${p.id}', 1)" class="bg-blue-900 text-white w-8 h-8 rounded-lg font-bold shadow-md">+</button></div>`;
+                    <button onclick="add('${p.id}', -1)" class="bg-gray-100 text-gray-400 w-9 h-9 rounded-xl font-bold">-</button>
+                    <span class="font-bold text-blue-900 text-sm w-4 text-center">${carrinho[p.id] || 0}</span>
+                    <button onclick="add('${p.id}', 1)" class="bg-blue-900 text-white w-9 h-9 rounded-xl font-bold shadow-md">+</button></div>`;
                 lista.appendChild(card);
             });
         }
@@ -128,26 +133,44 @@
 
         async function buscarCNPJ() {
             const cnpj = document.getElementById('cnpj-input').value;
+            if(cnpj.length < 14) return;
             try {
                 const res = await fetch(PROXY + `https://publica.cnpj.ws/cnpj/${cnpj}`);
                 const data = await res.json();
                 document.getElementById('razao-social').value = data.estabelecimento?.razao_social || data.razao_social || "Não encontrado";
-            } catch (e) { alert("Ative o Proxy."); }
+            } catch (e) { alert("Ative o acesso ao Proxy."); }
         }
 
-        function gerarOrcamento() {
+        function gerarEEnviar() {
+            if (Object.keys(carrinho).length === 0) return alert("Selecione ao menos um produto.");
+            
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
+            const cliente = document.getElementById('razao-social').value || "Cliente Novo";
+            
+            // Gerar PDF
+            doc.setFontSize(14);
             doc.text("ITALL COMÉRCIO - ORÇAMENTO", 14, 20);
+            doc.setFontSize(10);
+            doc.text(`CLIENTE: ${cliente}`, 14, 28);
             const rows = Object.keys(carrinho).map(id => {
                 const p = produtos.find(prod => prod.id == id);
-                return [p.nome, carrinho[id], p.preco.toFixed(2), (p.preco * carrinho[id]).toFixed(2)];
+                return [p.nome, carrinho[id], `R$ ${p.preco.toFixed(2)}`, `R$ ${(p.preco * carrinho[id]).toFixed(2)}`];
             });
-            doc.autoTable({ startY: 30, head: [['PRODUTO', 'QTD', 'UNIT.', 'TOTAL']], body: rows });
-            doc.save(`Orcamento_Itall.pdf`);
+            doc.autoTable({ startY: 35, head: [['PRODUTO', 'QTD', 'UNIT.', 'TOTAL']], body: rows });
+            doc.save(`Orcamento_Itall_${cliente.split(' ')[0]}.pdf`);
+
+            // Enviar WhatsApp
+            let msg = `*Orçamento Itall Comércio*%0A%0A*Cliente:* ${cliente}%0A*Itens:*%0A`;
+            Object.keys(carrinho).forEach(id => {
+                const p = produtos.find(prod => prod.id == id);
+                msg += `- ${carrinho[id]}x ${p.nome}%0A`;
+            });
+            msg += `%0A*Total:* ${document.getElementById('total-geral').innerText}`;
+            window.open(`https://api.whatsapp.com/send?text=${msg}`);
         }
 
-        carregarDados();
+        sincronizar();
     </script>
 </body>
 </html>
