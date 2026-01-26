@@ -17,9 +17,9 @@
     <header class="bg-blue-900 text-white p-4 sticky top-0 z-50 shadow-lg">
         <div class="flex justify-between items-center mb-3">
             <h1 class="font-bold text-lg tracking-tight">ITALL CAMPO</h1>
-            <span id="contagem-produtos" class="text-[10px] bg-blue-700 px-2 py-1 rounded tracking-widest uppercase">Sincronizando...</span>
+            <span id="contagem-produtos" class="text-[10px] bg-blue-700 px-2 py-1 rounded tracking-widest uppercase">Sincronizando Estoque...</span>
         </div>
-        <input type="text" id="busca-produto" oninput="render()" placeholder="Buscar mercadoria..." class="w-full p-3 rounded-xl text-black text-sm outline-none focus:ring-2 focus:ring-blue-500">
+        <input type="text" id="busca-produto" oninput="render()" placeholder="Buscar mercadoria..." class="w-full p-3 rounded-xl text-black text-sm outline-none shadow-inner">
     </header>
 
     <main class="p-4 space-y-4">
@@ -32,14 +32,14 @@
         </section>
 
         <div id="lista-produtos" class="grid grid-cols-1 gap-2">
-            <div class="text-center p-10">
+            <div class="text-center p-10 bg-white rounded-2xl border border-dashed border-gray-300">
                 <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-900 mx-auto mb-3"></div>
-                <p class="text-gray-500 text-sm">Buscando mercadorias para revenda...</p>
+                <p class="text-gray-500 text-sm">Acessando Saldos Omie...</p>
             </div>
         </div>
     </main>
 
-    <div class="fixed bottom-0 left-0 right-0 bg-white border-t p-4 shadow-[0_-5px_15px_rgba(0,0,0,0.05)] rounded-t-3xl">
+    <div class="fixed bottom-0 left-0 right-0 bg-white border-t p-4 shadow-lg rounded-t-3xl">
         <div class="flex justify-between items-center mb-4 px-2">
             <p class="text-2xl font-black text-blue-900" id="total-geral">R$ 0,00</p>
             <button onclick="gerarOrcamento()" class="bg-green-600 active:bg-green-700 text-white px-8 py-4 rounded-2xl font-black text-lg shadow-lg fast-tap">
@@ -55,43 +55,55 @@
         };
         const PROXY = "https://cors-anywhere.herokuapp.com/";
         let produtos = [];
+        let estoque = {};
         let carrinho = {};
 
-        async function carregarProdutosOmie() {
-            const url = "https://app.omie.com.br/api/v1/geral/produtos/";
-            const payload = {
-                "call": "ListarProdutos",
-                "app_key": OMIE_CONFIG.app_key,
-                "app_secret": OMIE_CONFIG.app_secret,
-                "param": [{ 
-                    "pagina": 1, 
-                    "registros_por_pagina": 500,
-                    "filtrar_apenas_omiepdv": "N",
-                    "inativo": "N", // Apenas produtos ATIVOS
-                    "filtrar_apenas_tipo": "00" // Apenas Mercadoria para Revenda
-                }]
-            };
-
+        async function carregarDadosCompletos() {
             try {
-                const response = await fetch(PROXY + url, {
+                // 1. CARREGAR PRODUTOS (Preços e Fotos)
+                const urlProd = "https://app.omie.com.br/api/v1/geral/produtos/";
+                const resProd = await fetch(PROXY + urlProd, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify({
+                        "call": "ListarProdutos",
+                        "app_key": OMIE_CONFIG.app_key, "app_secret": OMIE_CONFIG.app_secret,
+                        "param": [{"pagina": 1, "registros_por_pagina": 500, "inativo": "N", "filtrar_apenas_tipo": "00"}]
+                    })
                 });
-                const data = await response.json();
+                const dataProd = await resProd.json();
 
-                if (data.produto_servico_cadastro) {
-                    produtos = data.produto_servico_cadastro.map(p => ({
+                // 2. CARREGAR ESTOQUE (Saldo Físico e Reservas) conforme doc ConsultaEstoque
+                const urlEst = "https://app.omie.com.br/api/v1/estoque/consulta/";
+                const resEst = await fetch(PROXY + urlEst, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        "call": "ListarPosEstoque", // Conforme documentação enviada
+                        "app_key": OMIE_CONFIG.app_key, "app_secret": OMIE_CONFIG.app_secret,
+                        "param": [{"nPagina": 1, "nRegPorPagina": 500, "dDataPosicao": new Date().toLocaleDateString('pt-BR'), "cExibeTodos": "S"}]
+                    })
+                });
+                const dataEst = await resEst.json();
+
+                // Mapear saldos para acesso rápido
+                if(dataEst.produtos) {
+                    dataEst.produtos.forEach(e => { estoque[e.nCodProd] = e.nSaldo; });
+                }
+
+                if (dataProd.produto_servico_cadastro) {
+                    produtos = dataProd.produto_servico_cadastro.map(p => ({
                         id: p.codigo_produto,
                         nome: p.descricao,
                         preco: p.valor_unitario || 0,
-                        foto: p.imagens && p.imagens.length > 0 ? p.imagens[0].url_imagem : 'https://via.placeholder.com/100?text=ITALL'
+                        foto: p.imagens && p.imagens.length > 0 ? p.imagens[0].url_imagem : 'https://via.placeholder.com/100?text=ITALL',
+                        saldo: estoque[p.codigo_produto] || 0
                     }));
                     document.getElementById('contagem-produtos').innerText = `${produtos.length} ITENS DE REVENDA`;
                     render();
                 }
             } catch (e) {
-                document.getElementById('lista-produtos').innerHTML = `<p class="text-center p-4 text-red-500">Erro na conexão. Verifique o Proxy.</p>`;
+                document.getElementById('lista-produtos').innerHTML = `<p class="text-center p-4 text-red-500">Falha ao sincronizar. Verifique o Proxy.</p>`;
             }
         }
 
@@ -120,11 +132,12 @@
                     <div class="flex-1">
                         <h3 class="font-bold text-gray-800 text-[10px] uppercase leading-tight">${p.nome}</h3>
                         <p class="text-blue-600 font-black text-xs">R$ ${p.preco.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                        <p class="text-[9px] ${p.saldo > 0 ? 'text-green-600' : 'text-red-500'} font-bold">Estoque: ${p.saldo}</p>
                     </div>
                     <div class="flex items-center gap-2">
-                        <button onclick="add('${p.id}', -1)" class="bg-gray-100 text-gray-400 w-8 h-8 rounded-lg font-bold">-</button>
+                        <button onclick="add('${p.id}', -1)" class="bg-gray-100 text-gray-400 w-8 h-8 rounded-lg font-bold shadow-sm">-</button>
                         <span class="font-bold text-blue-900 text-xs w-4 text-center">${carrinho[p.id] || 0}</span>
-                        <button onclick="add('${p.id}', 1)" class="bg-blue-900 text-white w-8 h-8 rounded-lg font-bold">+</button>
+                        <button onclick="add('${p.id}', 1)" class="bg-blue-900 text-white w-8 h-8 rounded-lg font-bold shadow-md">+</button>
                     </div>`;
                 lista.appendChild(card);
             });
@@ -163,7 +176,7 @@
             doc.save(`Orcamento_Itall_${cliente.split(' ')[0]}.pdf`);
         }
 
-        carregarProdutosOmie();
+        carregarDadosCompletos();
     </script>
 </body>
 </html>
