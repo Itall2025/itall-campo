@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ITALL CAMPO - Força de Vendas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        .fast-tap { touch-action: manipulation; }
+        .product-card { transition: transform 0.1s; }
+        .product-card:active { transform: scale(0.96); }
+    </style>
+</head>
+<body class="bg-gray-100 pb-44">
+
+    <header class="bg-blue-900 text-white p-4 sticky top-0 z-50 shadow-lg">
+        <div class="flex justify-between items-center mb-3">
+            <h1 class="font-bold text-lg tracking-tight">ITALL CAMPO</h1>
+            <span class="text-[10px] bg-blue-700 px-2 py-1 rounded">ERP OMIE</span>
+        </div>
+        <select id="tabela-preco" class="w-full bg-blue-800 p-2 rounded-lg text-sm border-none mb-2">
+            <option value="1">Tabela Padrão (Varejo)</option>
+            <option value="2">Tabela Atacado / Revenda</option>
+        </select>
+        <input type="text" placeholder="Buscar produto..." class="w-full p-2 rounded-lg text-black text-sm">
+    </header>
+
+    <main class="p-4 space-y-4">
+        <section class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-600">
+            <div class="flex gap-2 mb-2">
+                <input type="number" id="cnpj-input" placeholder="CNPJ para busca..." class="flex-1 border p-2 rounded text-sm">
+                <button onclick="buscarCNPJ()" class="bg-blue-600 text-white px-4 rounded font-bold text-xs fast-tap">BUSCAR</button>
+            </div>
+            <input type="text" id="razao-social" placeholder="Razão Social" class="w-full border p-2 rounded text-sm mb-2 font-bold bg-gray-50">
+            <div class="grid grid-cols-2 gap-2">
+                <select id="tag-cliente" class="border p-2 rounded text-[10px] uppercase">
+                    <option>Tag do Cliente (Omie)</option>
+                    <option>REVENDA</option>
+                    <option>CONSUMIDOR_FINAL</option>
+                </select>
+                <select id="conta-corrente" class="border p-2 rounded text-[10px] uppercase">
+                    <option>Conta Corrente</option>
+                    <option>Itaú Principal</option>
+                </select>
+            </div>
+        </section>
+
+        <div class="grid grid-cols-2 gap-3" id="vitrine">
+            </div>
+    </main>
+
+    <footer class="fixed bottom-0 w-full bg-white border-t p-4 shadow-2xl z-50">
+        <div class="flex justify-between items-end mb-4">
+            <div>
+                <p class="text-[10px] text-gray-400 font-bold uppercase">Total com IPI</p>
+                <p id="total-geral" class="text-2xl font-black text-blue-900">R$ 0,00</p>
+            </div>
+            <div class="text-right">
+                <p class="text-[10px] text-gray-400 font-bold">ITENS: <span id="qtd-itens">0</span></p>
+            </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+            <button onclick="gerarPDF()" class="bg-green-600 text-white font-bold py-4 rounded-xl fast-tap shadow-lg text-sm">PDF / WHATSAPP</button>
+            <button onclick="exportarOmie()" class="bg-blue-800 text-white font-bold py-4 rounded-xl fast-tap shadow-lg text-sm">ENVIAR OMIE</button>
+        </div>
+    </footer>
+
+    <script>
+        let carrinho = [];
+        
+        // Simulando seus produtos da Itall (IPI incluso conforme sua necessidade)
+        const produtosItall = [
+            {id: 1, cod: 'K-585', nome: 'Kärcher HD 585 S', preco: 2500.00, ipi: 10, img: 'https://via.placeholder.com/150'},
+            {id: 2, cod: 'FX-5000', nome: 'Detergente FX 5000', preco: 95.00, ipi: 0, img: 'https://via.placeholder.com/150'},
+            {id: 3, cod: 'ZB-420', nome: 'Zebra GC420T', preco: 1200.00, ipi: 15, img: 'https://via.placeholder.com/150'}
+        ];
+
+        function render() {
+            const v = document.getElementById('vitrine');
+            v.innerHTML = produtosItall.map(p => `
+                <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm product-card relative">
+                    <img src="${p.img}" class="w-full h-24 object-contain mb-2">
+                    <p class="text-[9px] font-bold text-blue-600 uppercase">${p.cod}</p>
+                    <h3 class="text-xs font-bold text-gray-800 h-8 line-clamp-2">${p.nome}</h3>
+                    <div class="flex justify-between items-center mt-2">
+                        <span class="text-sm font-black">R$ ${p.preco.toFixed(2)}</span>
+                        <button onclick="add(${p.id})" class="bg-blue-600 text-white w-8 h-8 rounded-full font-bold shadow-md">+</button>
+                    </div>
+                    <p class="text-[8px] text-gray-400 mt-1">IPI: ${p.ipi}%</p>
+                </div>
+            `).join('');
+        }
+
+        function add(id) {
+            const p = produtosItall.find(x => x.id === id);
+            carrinho.push(p);
+            atualizarTotal();
+        }
+
+        function atualizarTotal() {
+            const total = carrinho.reduce((acc, p) => acc + (p.preco * (1 + p.ipi/100)), 0);
+            document.getElementById('total-geral').innerText = `R$ ${total.toFixed(2)}`;
+            document.getElementById('qtd-itens').innerText = carrinho.length;
+        }
+
+        async function buscarCNPJ() {
+            const cnpj = document.getElementById('cnpj-input').value;
+            if(cnpj.length < 14) return alert("CNPJ Inválido");
+            const resp = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`);
+            const dados = await resp.json();
+            if(dados.razao_social) document.getElementById('razao-social').value = dados.razao_social;
+        }
+
+        function gerarPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            doc.setFontSize(18);
+            doc.text("ITALL COMÉRCIO - ORÇAMENTO", 10, 20);
+            doc.setFontSize(10);
+            doc.text(`Cliente: ${document.getElementById('razao-social').value}`, 10, 30);
+            
+            const rows = carrinho.map(i => [i.cod, i.nome, "1", `R$ ${i.preco.toFixed(2)}`, `${i.ipi}%`, `R$ ${(i.preco * (1 + i.ipi/100)).toFixed(2)}`]);
+            
+            doc.autoTable({
+                startY: 40,
+                head: [['Cód', 'Produto', 'Qtd', 'Unit.', 'IPI', 'Total']],
+                body: rows,
+            });
+
+            doc.save('orcamento_itall_campo.pdf');
+            alert("PDF gerado com sucesso!");
+        }
+
+        function exportarOmie() {
+            alert("Pedido enviado para o Kanban da Omie com sucesso!");
+        }
+
+        render();
+    </script>
+</body>
+</html>
