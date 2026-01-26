@@ -14,16 +14,16 @@
     <header class="bg-blue-900 text-white p-4 sticky top-0 z-50 shadow-lg flex justify-between items-center">
         <div>
             <h1 class="font-bold text-lg italic uppercase tracking-tighter">Itall Campo</h1>
-            <p id="contagem-produtos" class="text-[9px] text-blue-300 font-bold uppercase">Sincronizando itens...</p>
+            <p id="contagem-produtos" class="text-[9px] text-blue-300 font-bold uppercase">Sincronizando 373 itens...</p>
         </div>
-        <input type="text" id="busca-produto" oninput="render()" placeholder="🔍 Buscar na Itall..." class="w-1/2 p-2 rounded-lg text-black text-sm outline-none focus:ring-2 focus:ring-blue-400">
+        <input type="text" id="busca-produto" oninput="render()" placeholder="🔍 Buscar na Itall..." class="w-1/2 p-2 rounded-lg text-black text-sm outline-none">
     </header>
 
     <main class="p-4 max-w-5xl mx-auto space-y-4">
         <section class="bg-white p-4 rounded-2xl shadow-sm border-l-8 border-blue-600">
             <div class="flex gap-2 mb-2">
                 <input type="number" id="cnpj-input" placeholder="CNPJ do Cliente" class="flex-1 border p-3 rounded-xl text-sm bg-gray-50 outline-none">
-                <button onclick="buscarCNPJ()" class="bg-blue-600 hover:bg-blue-800 text-white px-6 rounded-xl font-bold text-xs uppercase transition-all">Buscar</button>
+                <button onclick="buscarCNPJ()" class="bg-blue-600 text-white px-6 rounded-xl font-bold text-xs uppercase">Buscar</button>
             </div>
             <input type="text" id="razao-social" placeholder="Razão Social" class="w-full border p-2 rounded-xl text-sm bg-gray-100 font-bold text-blue-900" readonly>
         </section>
@@ -31,18 +31,18 @@
         <div id="lista-produtos" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             <div class="text-center p-20 bg-white rounded-3xl border-2 border-dashed col-span-full">
                 <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-900 mx-auto mb-4"></div>
-                <p class="text-gray-500 font-bold text-sm">Acessando os 373 itens da Itall...</p>
+                <p class="text-gray-500 font-bold">Carregando os 373 itens ativos...</p>
             </div>
         </div>
     </main>
 
     <div class="fixed bottom-0 left-0 right-0 bg-white border-t p-6 shadow-2xl flex justify-around items-center rounded-t-3xl">
         <div class="text-left">
-            <p class="text-[10px] text-gray-400 font-bold uppercase">Total do Pedido</p>
+            <p class="text-[10px] text-gray-400 font-bold uppercase">Total</p>
             <p class="text-3xl font-black text-blue-900" id="total-geral">R$ 0,00</p>
         </div>
-        <button onclick="gerarEEnviar()" class="bg-green-600 hover:bg-green-700 text-white px-10 py-4 rounded-2xl font-black text-lg shadow-xl transition-all">
-            ENVIAR WHATSAPP
+        <button onclick="gerarEEnviar()" class="bg-green-600 text-white px-10 py-4 rounded-2xl font-black text-lg shadow-xl">
+            FINALIZAR
         </button>
     </div>
 
@@ -51,11 +51,11 @@
         const PROXY = "https://cors-anywhere.herokuapp.com/";
         let produtos = [], estoqueSaldos = {}, carrinho = {};
 
-        async function sincronizarItall() {
+        async function sincronizar() {
             try {
                 const hoje = new Date().toLocaleDateString('pt-BR');
 
-                // 1. BUSCAR ESTOQUE REAL (Local 0)
+                // 1. ESTOQUE (Local 0)
                 const resEst = await fetch(PROXY + "https://app.omie.com.br/api/v1/estoque/consulta/", {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -68,7 +68,7 @@
                 const dataEst = await resEst.json();
                 if(dataEst.produtos) dataEst.produtos.forEach(e => { estoqueSaldos[e.nCodProd] = e.nSaldo; });
 
-                // 2. BUSCAR 373 PRODUTOS ATIVOS
+                // 2. PRODUTOS (Sem filtro de tipo para evitar erro 0 itens)
                 const resProd = await fetch(PROXY + "https://app.omie.com.br/api/v1/geral/produtos/", {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -88,11 +88,11 @@
                         foto: p.imagens?.[0]?.url_imagem || 'https://via.placeholder.com/100?text=ITALL',
                         saldo: estoqueSaldos[p.codigo_produto] || 0
                     }));
-                    document.getElementById('contagem-produtos').innerText = `${produtos.length} ITENS ATIVOS`;
+                    document.getElementById('contagem-produtos').innerText = `${produtos.length} PRODUTOS ENCONTRADOS`;
                     render();
                 }
             } catch (e) {
-                document.getElementById('lista-produtos').innerHTML = `<p class="p-10 text-red-600 text-center font-bold">⚠️ Falha de rede. Use CTRL+F5.</p>`;
+                document.getElementById('lista-produtos').innerHTML = `<p class="p-10 text-red-600 text-center font-bold italic">Falha de rede. Use CTRL+F5.</p>`;
             }
         }
 
@@ -100,16 +100,13 @@
             const termo = document.getElementById('busca-produto').value.toLowerCase();
             const lista = document.getElementById('lista-produtos');
             lista.innerHTML = '';
-            
             produtos.filter(p => p.nome.toLowerCase().includes(termo)).forEach(p => {
                 const card = document.createElement('div');
-                card.className = 'bg-white p-3 rounded-2xl flex gap-3 items-center shadow-sm border border-gray-100';
+                card.className = 'bg-white p-3 rounded-2xl flex gap-3 items-center shadow-sm border border-gray-100 hover:shadow-md transition-all';
                 card.innerHTML = `<img src="${p.foto}" class="product-img rounded border">
-                    <div class="flex-1 text-left">
-                        <h3 class="font-bold text-gray-800 text-[10px] uppercase leading-tight">${p.nome}</h3>
-                        <p class="text-blue-600 font-black text-sm">R$ ${p.preco.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-                        <p class="text-[9px] ${p.saldo > 0 ? 'text-green-600' : 'text-red-500'} font-bold">Saldo: ${p.saldo}</p>
-                    </div>
+                    <div class="flex-1 text-left"><h3 class="font-bold text-gray-800 text-[10px] uppercase leading-tight">${p.nome}</h3>
+                    <p class="text-blue-600 font-black text-sm">R$ ${p.preco.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                    <p class="text-[9px] ${p.saldo > 0 ? 'text-green-600' : 'text-red-500'} font-bold">Saldo: ${p.saldo}</p></div>
                     <div class="flex items-center gap-2">
                         <button onclick="add('${p.id}', -1)" class="bg-gray-100 text-gray-400 w-8 h-8 rounded-lg font-bold">-</button>
                         <span class="font-bold text-blue-900 text-sm w-4 text-center">${carrinho[p.id] || 0}</span>
@@ -142,7 +139,7 @@
 
         function gerarEEnviar() {
             const cliente = document.getElementById('razao-social').value || "Cliente Itall";
-            let msg = `*Orçamento Itall Comércio*%0A*Cliente:* ${cliente}%0A%0A*Itens:*%0A`;
+            let msg = `*Pedido Itall Comércio*%0A*Cliente:* ${cliente}%0A%0A*Itens:*%0A`;
             Object.keys(carrinho).forEach(id => {
                 const p = produtos.find(prod => prod.id == id);
                 msg += `- ${carrinho[id]}x ${p.nome} (R$ ${p.preco.toFixed(2)})%0A`;
@@ -151,7 +148,7 @@
             window.open(`https://api.whatsapp.com/send?text=${msg}`);
         }
 
-        sincronizarItall();
+        sincronizar();
     </script>
 </body>
 </html>
