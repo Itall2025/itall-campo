@@ -3,139 +3,103 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ITALL CAMPO - Oficial</title>
+    <title>DIAGNÓSTICO ITALL - Sistema de Vendas</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
-    <style>.product-img { object-fit: contain; background: #fff; width: 65px; height: 65px; }</style>
 </head>
-<body class="bg-gray-100 pb-44">
+<body class="bg-gray-900 text-white p-6">
 
-    <header class="bg-blue-900 text-white p-4 sticky top-0 z-50 shadow-lg flex justify-between items-center">
-        <h1 class="font-bold text-lg italic uppercase">Itall Campo</h1>
-        <span id="contagem-produtos" class="text-[9px] bg-blue-700 px-2 py-1 rounded-full uppercase font-bold">Conectando...</span>
+    <header class="mb-8 border-b border-gray-700 pb-4">
+        <h1 class="text-2xl font-black text-blue-400 italic">ITALL CAMPO - MODO DIAGNÓSTICO</h1>
+        <p class="text-gray-400 text-sm">Status da Conexão em Tempo Real</p>
     </header>
 
-    <main class="p-6 space-y-4 max-w-4xl mx-auto">
-        <section class="bg-white p-6 rounded-2xl shadow-sm border-l-8 border-blue-600">
-            <div class="flex gap-4 mb-4">
-                <input type="number" id="cnpj-input" placeholder="Digite o CNPJ" class="flex-1 border p-3 rounded-xl text-lg bg-gray-50 outline-none">
-                <button onclick="buscarCNPJ()" class="bg-blue-600 hover:bg-blue-800 text-white px-8 rounded-xl font-bold uppercase transition-all">Buscar</button>
-            </div>
-            <input type="text" id="razao-social" placeholder="Razão Social" class="w-full border p-3 rounded-xl text-lg bg-gray-100 font-bold text-blue-900" readonly>
-        </section>
-
-        <div id="lista-produtos" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="text-center p-20 bg-white rounded-3xl border-2 border-dashed col-span-full">
-                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-900 mx-auto mb-4"></div>
-                <p class="text-gray-500 font-medium text-lg">Sincronizando com Estoque Itall Comércio...</p>
-            </div>
+    <div id="painel-diagnostico" class="space-y-4 mb-8">
+        <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+            <p class="text-xs uppercase text-gray-500 font-bold mb-2">1. Status do Proxy (Heroku)</p>
+            <div id="status-proxy" class="text-yellow-500 font-bold">Verificando...</div>
         </div>
-    </main>
 
-    <div class="fixed bottom-0 left-0 right-0 bg-white border-t p-6 shadow-2xl flex justify-around items-center">
-        <div class="text-left">
-            <p class="text-xs text-gray-400 font-bold uppercase">Total do Pedido</p>
-            <p class="text-4xl font-black text-blue-900" id="total-geral">R$ 0,00</p>
+        <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+            <p class="text-xs uppercase text-gray-500 font-bold mb-2">2. Resposta da Omie (API)</p>
+            <div id="status-omie" class="text-yellow-500 font-bold text-xs break-all italic">Aguardando chamada...</div>
         </div>
-        <button onclick="gerarEEnviar()" class="bg-green-600 hover:bg-green-700 text-white px-12 py-5 rounded-2xl font-black text-xl shadow-xl transition-all">
-            FINALIZAR PEDIDO
-        </button>
+
+        <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+            <p class="text-xs uppercase text-gray-500 font-bold mb-2">3. Filtro de Produtos (Tipo 00)</p>
+            <div id="status-produtos" class="text-yellow-500 font-bold text-xs italic italic italic italic">Aguardando dados...</div>
+        </div>
     </div>
+
+    <div id="lista-vitrine" class="grid grid-cols-1 gap-4">
+        </div>
 
     <script>
         const CONFIG = { key: '4695613971048', secret: 'adcacd22b1c64d9520965dac570b3afd' };
         const PROXY = "https://cors-anywhere.herokuapp.com/";
-        let produtos = [], estoqueSaldos = {}, carrinho = {};
 
-        async function sincronizar() {
+        async function rodarDiagnostico() {
+            const statusProxy = document.getElementById('status-proxy');
+            const statusOmie = document.getElementById('status-omie');
+            const statusProdutos = document.getElementById('status-produtos');
+
             try {
-                const hoje = new Date().toLocaleDateString('pt-BR');
-                
-                // 1. ESTOQUE (Local 0)
-                const resEst = await fetch(PROXY + "https://app.omie.com.br/api/v1/estoque/consulta/", {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        "call": "ListarPosEstoque",
-                        "app_key": CONFIG.key, "app_secret": CONFIG.secret,
-                        "param": [{"nPagina": 1, "nRegPorPagina": 500, "dDataPosicao": hoje, "cExibeTodos": "S", "codigo_local_estoque": 0}]
-                    })
-                });
-                const dataEst = await resEst.json();
-                if(dataEst.produtos) dataEst.produtos.forEach(e => { estoqueSaldos[e.nCodProd] = e.nSaldo; });
+                // TESTE 1: PROXY
+                statusProxy.innerText = "🟡 Testando túnel...";
+                const resProxy = await fetch(PROXY + "https://google.com", { method: 'HEAD' });
+                if (resProxy.ok) {
+                    statusProxy.innerText = "🟢 PROXY ATIVO E LIBERADO";
+                    statusProxy.className = "text-green-500 font-bold";
+                }
 
-                // 2. PRODUTOS (Revenda 00)
-                const resProd = await fetch(PROXY + "https://app.omie.com.br/api/v1/geral/produtos/", {
+                // TESTE 2: OMIE
+                statusOmie.innerText = "🟡 Chamando Omie...";
+                const resOmie = await fetch(PROXY + "https://app.omie.com.br/api/v1/geral/produtos/", {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         "call": "ListarProdutos",
                         "app_key": CONFIG.key, "app_secret": CONFIG.secret,
-                        "param": [{"pagina": 1, "registros_por_pagina": 500, "inativo": "N", "filtrar_apenas_tipo": "00"}]
+                        "param": [{"pagina": 1, "registros_por_pagina": 10, "inativo": "N", "filtrar_apenas_tipo": "00"}]
                     })
                 });
-                const dataProd = await resProd.json();
 
-                if (dataProd.produto_servico_cadastro) {
-                    produtos = dataProd.produto_servico_cadastro.map(p => ({
-                        id: p.codigo_produto, nome: p.descricao, preco: p.valor_unitario || 0,
-                        foto: p.imagens?.[0]?.url_imagem || 'https://via.placeholder.com/100?text=ITALL',
-                        saldo: estoqueSaldos[p.codigo_produto] || 0
-                    }));
-                    document.getElementById('contagem-produtos').innerText = `${produtos.length} ITENS`;
-                    render();
+                const data = await resOmie.json();
+                
+                if (data.faultstring) {
+                    statusOmie.innerText = "🔴 ERRO NA OMIE: " + data.faultstring;
+                    statusOmie.className = "text-red-500 font-bold";
+                } else if (data.produto_servico_cadastro) {
+                    statusOmie.innerText = "🟢 OMIE RESPONDEU COM SUCESSO";
+                    statusOmie.className = "text-green-500 font-bold";
+                    
+                    const qtd = data.produto_servico_cadastro.length;
+                    statusProdutos.innerText = `🟢 ENCONTRADOS ${qtd} PRODUTOS DE REVENDA (TIPO 00)`;
+                    statusProdutos.className = "text-green-500 font-bold";
+                    
+                    renderTeste(data.produto_servico_cadastro);
+                } else {
+                    statusProdutos.innerText = "🔴 NENHUM PRODUTO TIPO 00 ENCONTRADO";
+                    statusProdutos.className = "text-orange-500 font-bold";
                 }
+
             } catch (e) {
-                document.getElementById('lista-produtos').innerHTML = `
-                    <div class="p-10 bg-red-100 text-red-700 rounded-3xl col-span-full text-center font-bold">
-                        ⚠️ Erro de Proxy. Ative no link do cors-anywhere e use CTRL+F5.
-                    </div>`;
+                statusProxy.innerText = "🔴 PROXY BLOQUEADO OU EXPIRADO. ACESSE cors-anywhere.herokuapp.com/corsdemo";
+                statusProxy.className = "text-red-500 font-bold";
+                console.error(e);
             }
         }
 
-        function render() {
-            const lista = document.getElementById('lista-produtos');
-            lista.innerHTML = '';
-            produtos.forEach(p => {
+        function renderTeste(itens) {
+            const lista = document.getElementById('lista-vitrine');
+            itens.forEach(p => {
                 const card = document.createElement('div');
-                card.className = 'bg-white p-4 rounded-2xl flex gap-4 items-center shadow-sm border border-gray-100';
-                card.innerHTML = `<img src="${p.foto}" class="product-img rounded-xl border">
-                    <div class="flex-1 text-left"><h3 class="font-bold text-gray-800 text-xs uppercase leading-tight">${p.nome}</h3>
-                    <p class="text-blue-600 font-black text-sm">R$ ${p.preco.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-                    <p class="text-[9px] ${p.saldo > 0 ? 'text-green-600' : 'text-red-500'} font-black">Saldo: ${p.saldo}</p></div>
-                    <div class="flex flex-col gap-2 items-center">
-                    <button onclick="add('${p.id}', 1)" class="bg-blue-900 text-white w-10 h-10 rounded-xl font-bold">+</button>
-                    <span class="font-bold text-blue-900 text-sm">${carrinho[p.id] || 0}</span>
-                    <button onclick="add('${p.id}', -1)" class="bg-gray-200 text-gray-400 w-10 h-10 rounded-xl font-bold">-</button></div>`;
+                card.className = 'bg-white text-black p-4 rounded-xl flex justify-between';
+                card.innerHTML = `<span>${p.descricao}</span><span class="font-bold text-blue-600">R$ ${p.valor_unitario}</span>`;
                 lista.appendChild(card);
             });
         }
 
-        function add(id, delta) {
-            carrinho[id] = (carrinho[id] || 0) + delta;
-            if(carrinho[id] <= 0) delete carrinho[id];
-            render();
-            let total = 0;
-            Object.keys(carrinho).forEach(id => {
-                const p = produtos.find(prod => prod.id == id);
-                total += p.preco * carrinho[id];
-            });
-            document.getElementById('total-geral').innerText = `R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
-        }
-
-        async function buscarCNPJ() {
-            const cnpj = document.getElementById('cnpj-input').value;
-            try {
-                const res = await fetch(PROXY + `https://publica.cnpj.ws/cnpj/${cnpj}`);
-                const data = await res.json();
-                document.getElementById('razao-social').value = data.estabelecimento?.razao_social || data.razao_social || "Não encontrado";
-            } catch (e) { alert("Ative o Proxy e use CTRL+F5."); }
-        }
-
-        function gerarEEnviar() { window.print(); }
-
-        sincronizar();
+        rodarDiagnostico();
     </script>
 </body>
 </html>
