@@ -7,22 +7,26 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        .fast-tap { touch-action: manipulation; }
+        .product-img { object-fit: contain; background: #fff; width: 60px; height: 60px; }
+    </style>
 </head>
 <body class="bg-gray-100 pb-44">
 
     <header class="bg-blue-900 text-white p-4 sticky top-0 z-50 shadow-lg">
         <div class="flex justify-between items-center mb-3">
             <h1 class="font-bold text-lg tracking-tight">ITALL CAMPO</h1>
-            <span id="contagem-produtos" class="text-[10px] bg-blue-700 px-2 py-1 rounded tracking-widest uppercase text-white">Sincronizando...</span>
+            <span id="contagem-produtos" class="text-[10px] bg-blue-700 px-2 py-1 rounded tracking-widest uppercase">Sincronizando Estoque...</span>
         </div>
-        <input type="text" id="busca-produto" oninput="render()" placeholder="Filtrar mercadorias..." class="w-full p-3 rounded-xl text-black text-sm outline-none">
+        <input type="text" id="busca-produto" oninput="render()" placeholder="Buscar mercadoria..." class="w-full p-3 rounded-xl text-black text-sm outline-none shadow-inner">
     </header>
 
     <main class="p-4 space-y-4">
         <section class="bg-white p-4 rounded-2xl shadow-sm border-l-4 border-blue-600">
             <div class="flex gap-2 mb-2">
                 <input type="number" id="cnpj-input" placeholder="CNPJ do Cliente" class="flex-1 border p-3 rounded-lg text-sm bg-gray-50 outline-none">
-                <button onclick="buscarCNPJ()" class="bg-blue-600 text-white px-5 rounded-lg font-bold text-xs uppercase">BUSCAR</button>
+                <button onclick="buscarCNPJ()" class="bg-blue-600 active:bg-blue-800 text-white px-5 rounded-lg font-bold text-xs uppercase fast-tap">BUSCAR</button>
             </div>
             <input type="text" id="razao-social" placeholder="Razão Social" class="w-full border p-3 rounded-lg text-sm bg-gray-100 font-medium" readonly>
         </section>
@@ -30,7 +34,7 @@
         <div id="lista-produtos" class="grid grid-cols-1 gap-2">
             <div class="text-center p-10 bg-white rounded-2xl border border-dashed border-gray-300">
                 <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-900 mx-auto mb-3"></div>
-                <p class="text-gray-500 text-sm">Acessando Estoque Padrão Omie...</p>
+                <p class="text-gray-500 text-sm">Acessando Saldos Omie...</p>
             </div>
         </div>
     </main>
@@ -38,7 +42,7 @@
     <div class="fixed bottom-0 left-0 right-0 bg-white border-t p-4 shadow-lg rounded-t-3xl">
         <div class="flex justify-between items-center mb-4 px-2">
             <p class="text-2xl font-black text-blue-900" id="total-geral">R$ 0,00</p>
-            <button onclick="gerarOrcamento()" class="bg-green-600 text-white px-8 py-4 rounded-2xl font-black text-lg shadow-lg">
+            <button onclick="gerarOrcamento()" class="bg-green-600 active:bg-green-700 text-white px-8 py-4 rounded-2xl font-black text-lg shadow-lg fast-tap">
                 GERAR PDF
             </button>
         </div>
@@ -51,30 +55,14 @@
         };
         const PROXY = "https://cors-anywhere.herokuapp.com/";
         let produtos = [];
-        let estoqueSaldos = {};
+        let estoque = {};
         let carrinho = {};
 
-        async function carregarDados() {
+        async function carregarDadosCompletos() {
             try {
-                const hoje = new Date().toLocaleDateString('pt-BR');
-
-                // 1. CARREGAR ESTOQUE (Local 0)
-                const resEst = await fetch(PROXY + "https://app.omie.com.br/api/v1/estoque/consulta/", {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        "call": "ListarPosEstoque",
-                        "app_key": OMIE_CONFIG.app_key, "app_secret": OMIE_CONFIG.app_secret,
-                        "param": [{"nPagina": 1, "nRegPorPagina": 500, "dDataPosicao": hoje, "cExibeTodos": "S", "codigo_local_estoque": 0}]
-                    })
-                });
-                const dataEst = await resEst.json();
-                if(dataEst.produtos) {
-                    dataEst.produtos.forEach(e => { estoqueSaldos[e.nCodProd] = e.nSaldo; });
-                }
-
-                // 2. CARREGAR PRODUTOS (Revenda Tipo 00)
-                const resProd = await fetch(PROXY + "https://app.omie.com.br/api/v1/geral/produtos/", {
+                // 1. CARREGAR PRODUTOS (Preços e Fotos)
+                const urlProd = "https://app.omie.com.br/api/v1/geral/produtos/";
+                const resProd = await fetch(PROXY + urlProd, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -85,19 +73,37 @@
                 });
                 const dataProd = await resProd.json();
 
+                // 2. CARREGAR ESTOQUE (Saldo Físico e Reservas) conforme doc ConsultaEstoque
+                const urlEst = "https://app.omie.com.br/api/v1/estoque/consulta/";
+                const resEst = await fetch(PROXY + urlEst, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        "call": "ListarPosEstoque", // Conforme documentação enviada
+                        "app_key": OMIE_CONFIG.app_key, "app_secret": OMIE_CONFIG.app_secret,
+                        "param": [{"nPagina": 1, "nRegPorPagina": 500, "dDataPosicao": new Date().toLocaleDateString('pt-BR'), "cExibeTodos": "S"}]
+                    })
+                });
+                const dataEst = await resEst.json();
+
+                // Mapear saldos para acesso rápido
+                if(dataEst.produtos) {
+                    dataEst.produtos.forEach(e => { estoque[e.nCodProd] = e.nSaldo; });
+                }
+
                 if (dataProd.produto_servico_cadastro) {
                     produtos = dataProd.produto_servico_cadastro.map(p => ({
                         id: p.codigo_produto,
                         nome: p.descricao,
                         preco: p.valor_unitario || 0,
-                        foto: p.imagens?.[0]?.url_imagem || 'https://via.placeholder.com/100?text=ITALL',
-                        saldo: estoqueSaldos[p.codigo_produto] || 0
+                        foto: p.imagens && p.imagens.length > 0 ? p.imagens[0].url_imagem : 'https://via.placeholder.com/100?text=ITALL',
+                        saldo: estoque[p.codigo_produto] || 0
                     }));
-                    document.getElementById('contagem-produtos').innerText = `${produtos.length} ITENS ATIVOS`;
+                    document.getElementById('contagem-produtos').innerText = `${produtos.length} ITENS DE REVENDA`;
                     render();
                 }
             } catch (e) {
-                document.getElementById('lista-produtos').innerHTML = `<p class="text-center p-4 text-red-500">Erro de conexão. Ative o Proxy.</p>`;
+                document.getElementById('lista-produtos').innerHTML = `<p class="text-center p-4 text-red-500">Falha ao sincronizar. Verifique o Proxy.</p>`;
             }
         }
 
@@ -115,20 +121,21 @@
             const termo = document.getElementById('busca-produto').value.toLowerCase();
             const lista = document.getElementById('lista-produtos');
             lista.innerHTML = '';
+            
             const filtrados = produtos.filter(p => p.nome.toLowerCase().includes(termo));
 
             filtrados.forEach(p => {
                 const card = document.createElement('div');
-                card.className = 'bg-white p-3 rounded-2xl flex gap-3 items-center shadow-sm border border-gray-100';
+                card.className = 'bg-white p-2 rounded-xl flex gap-3 items-center shadow-sm border border-gray-100';
                 card.innerHTML = `
-                    <img src="${p.foto}" class="w-[60px] h-[60px] object-contain rounded-lg border">
+                    <img src="${p.foto}" class="product-img rounded-lg border">
                     <div class="flex-1">
                         <h3 class="font-bold text-gray-800 text-[10px] uppercase leading-tight">${p.nome}</h3>
                         <p class="text-blue-600 font-black text-xs">R$ ${p.preco.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-                        <p class="text-[9px] ${p.saldo > 0 ? 'text-green-600' : 'text-red-500'} font-bold">Saldo: ${p.saldo}</p>
+                        <p class="text-[9px] ${p.saldo > 0 ? 'text-green-600' : 'text-red-500'} font-bold">Estoque: ${p.saldo}</p>
                     </div>
                     <div class="flex items-center gap-2">
-                        <button onclick="add('${p.id}', -1)" class="bg-gray-100 text-gray-400 w-8 h-8 rounded-lg font-bold">-</button>
+                        <button onclick="add('${p.id}', -1)" class="bg-gray-100 text-gray-400 w-8 h-8 rounded-lg font-bold shadow-sm">-</button>
                         <span class="font-bold text-blue-900 text-xs w-4 text-center">${carrinho[p.id] || 0}</span>
                         <button onclick="add('${p.id}', 1)" class="bg-blue-900 text-white w-8 h-8 rounded-lg font-bold shadow-md">+</button>
                     </div>`;
@@ -156,16 +163,20 @@
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
             const cliente = document.getElementById('razao-social').value || "Cliente Novo";
+            doc.setFontSize(14);
             doc.text("ITALL COMÉRCIO - ORÇAMENTO", 14, 20);
+            doc.setFontSize(10);
+            doc.text(`CLIENTE: ${cliente}`, 14, 28);
+            
             const rows = Object.keys(carrinho).map(id => {
                 const p = produtos.find(prod => prod.id == id);
                 return [p.nome, carrinho[id], p.preco.toFixed(2), (p.preco * carrinho[id]).toFixed(2)];
             });
-            doc.autoTable({ startY: 30, head: [['PRODUTO', 'QTD', 'UNIT.', 'TOTAL']], body: rows });
-            doc.save(`Orcamento_Itall.pdf`);
+            doc.autoTable({ startY: 35, head: [['Produto', 'Qtd', 'Unit.', 'Total']], body: rows });
+            doc.save(`Orcamento_Itall_${cliente.split(' ')[0]}.pdf`);
         }
 
-        carregarDados();
+        carregarDadosCompletos();
     </script>
 </body>
 </html>
