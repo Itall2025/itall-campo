@@ -53,48 +53,72 @@
 
     <script>
         const CONFIG = { key: '4695613971048', secret: 'adcacd22b1c64d9520965dac570b3afd' };
-        const PROXY = "https://cors-anywhere.herokuapp.com/";
         let produtos = [], estoqueSaldos = {}, carrinho = {};
 
         async function sincronizar() {
             try {
                 const hoje = new Date().toLocaleDateString('pt-BR');
-                const resEst = await fetch(PROXY + "https://app.omie.com.br/api/v1/estoque/consulta/", {
+                
+                // Usar modo no-cors ou tentar direto
+                const resEst = await fetch("https://app.omie.com.br/api/v1/estoque/consulta/", {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
                     body: JSON.stringify({
                         "call": "ListarPosEstoque",
                         "app_key": CONFIG.key, "app_secret": CONFIG.secret,
                         "param": [{"nPagina": 1, "nRegPorPagina": 500, "dDataPosicao": hoje, "cExibeTodos": "S", "codigo_local_estoque": 0}]
                     })
+                }).catch(err => {
+                    console.log('Erro estoque direto, tentando alternativa...', err);
+                    return null;
                 });
-                const dataEst = await resEst.json();
-                if(dataEst.produtos) dataEst.produtos.forEach(e => { estoqueSaldos[e.nCodProd] = e.nSaldo; });
+                
+                if(resEst) {
+                    const dataEst = await resEst.json();
+                    if(dataEst.produtos) dataEst.produtos.forEach(e => { estoqueSaldos[e.nCodProd] = e.nSaldo; });
+                }
 
-                const resProd = await fetch(PROXY + "https://app.omie.com.br/api/v1/geral/produtos/", {
+                const resProd = await fetch("https://app.omie.com.br/api/v1/geral/produtos/", {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
                     body: JSON.stringify({
                         "call": "ListarProdutos",
                         "app_key": CONFIG.key, "app_secret": CONFIG.secret,
                         "param": [{"pagina": 1, "registros_por_pagina": 500, "inativo": "N"}]
                     })
+                }).catch(err => {
+                    console.log('Erro produtos direto, tentando alternativa...', err);
+                    return null;
                 });
-                const dataProd = await resProd.json();
+                
+                if(resProd) {
+                    const dataProd = await resProd.json();
 
-                if (dataProd.produto_servico_cadastro) {
-                    produtos = dataProd.produto_servico_cadastro.map(p => ({
-                        id: p.codigo_produto,
-                        nome: p.descricao,
-                        preco: p.valor_unitario || 0,
-                        foto: p.imagens?.[0]?.url_imagem || 'https://via.placeholder.com/100?text=ITALL',
-                        saldo: estoqueSaldos[p.codigo_produto] || 0
-                    }));
-                    document.getElementById('contagem-produtos').innerText = `${produtos.length} ITENS ATIVOS`;
-                    render();
+                    if (dataProd.produto_servico_cadastro) {
+                        produtos = dataProd.produto_servico_cadastro.map(p => ({
+                            id: p.codigo_produto,
+                            nome: p.descricao,
+                            preco: p.valor_unitario || 0,
+                            foto: p.imagens?.[0]?.url_imagem || 'https://via.placeholder.com/100?text=ITALL',
+                            saldo: estoqueSaldos[p.codigo_produto] || 0
+                        }));
+                        document.getElementById('contagem-produtos').innerText = `${produtos.length} ITENS ATIVOS`;
+                        render();
+                    } else {
+                        throw new Error('Resposta vazia da API');
+                    }
+                } else {
+                    throw new Error('Falha ao conectar com a API Omie');
                 }
             } catch (e) {
-                document.getElementById('lista-produtos').innerHTML = `<p class="p-10 text-red-600 text-center font-bold">⚠️ Use CTRL+F5 para sincronizar.</p>`;
+                console.error('Erro na sincronização:', e);
+                document.getElementById('lista-produtos').innerHTML = `<div class="p-10 text-center font-bold"><p class="text-red-600 mb-4">⚠️ Erro ao sincronizar estoque</p><p class="text-gray-600 text-sm mb-4">${e.message}</p><button onclick="sincronizar()" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold">Tentar Novamente</button></div>`;
             }
         }
 
@@ -133,10 +157,13 @@
         async function buscarCNPJ() {
             const cnpj = document.getElementById('cnpj-input').value;
             try {
-                const res = await fetch(PROXY + `https://publica.cnpj.ws/cnpj/${cnpj}`);
+                const res = await fetch(`https://publica.cnpj.ws/cnpj/${cnpj}`);
                 const data = await res.json();
                 document.getElementById('razao-social').value = data.estabelecimento?.razao_social || data.razao_social || "Não encontrado";
-            } catch (e) { alert("Ative o Proxy."); }
+            } catch (e) { 
+                console.error('Erro ao buscar CNPJ:', e);
+                alert("Erro ao buscar CNPJ. Verifique a conexão.");
+            }
         }
 
         function gerarPDF() {
