@@ -3,31 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ITALL CAMPO - Força de Vendas</title>
+    <title>ITALL CAMPO - Oficial</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
-    <style>
-        .fast-tap { touch-action: manipulation; }
-        .product-card { transition: transform 0.1s; border: 1px solid #e5e7eb; }
-        .product-card:active { transform: scale(0.96); }
-    </style>
 </head>
 <body class="bg-gray-100 pb-44">
 
     <header class="bg-blue-900 text-white p-4 sticky top-0 z-50 shadow-lg">
         <div class="flex justify-between items-center mb-3">
             <h1 class="font-bold text-lg tracking-tight">ITALL CAMPO</h1>
-            <span class="text-[10px] bg-blue-700 px-2 py-1 rounded">ERP OMIE INTEGRADO</span>
+            <span class="text-[10px] bg-blue-700 px-2 py-1 rounded">V1.2 - OMIE JSON</span>
         </div>
-        <input type="text" id="busca-produto" oninput="render()" placeholder="Buscar produto na Itall..." class="w-full p-2 rounded-lg text-black text-sm">
+        <input type="text" id="busca-produto" oninput="render()" placeholder="Filtrar produtos..." class="w-full p-2 rounded-lg text-black text-sm">
     </header>
 
     <main class="p-4 space-y-4">
         <section class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-600">
             <div class="flex gap-2 mb-2">
-                <input type="number" id="cnpj-input" placeholder="CNPJ para busca..." class="flex-1 border p-2 rounded text-sm">
-                <button onclick="buscarCNPJ()" class="bg-blue-600 text-white px-4 rounded font-bold text-xs fast-tap">BUSCAR</button>
+                <input type="number" id="cnpj-input" placeholder="CNPJ Cliente" class="flex-1 border p-2 rounded text-sm">
+                <button onclick="buscarCNPJ()" class="bg-blue-600 text-white px-4 rounded font-bold text-xs">BUSCAR</button>
             </div>
             <input type="text" id="razao-social" placeholder="Razão Social" class="w-full border p-2 rounded text-sm bg-gray-50" readonly>
         </section>
@@ -35,94 +30,94 @@
         <div id="lista-produtos" class="grid grid-cols-1 gap-3">
             <div class="text-center p-10">
                 <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-900 mx-auto mb-2"></div>
-                <p class="text-gray-500">Conectando ao estoque da Itall...</p>
+                <p class="text-gray-500 text-sm">Lendo dados da Itall Comércio...</p>
             </div>
         </div>
     </main>
 
-    <div class="fixed bottom-0 left-0 right-0 bg-white border-t p-4 shadow-[0_-5px_15px_rgba(0,0,0,0.1)]">
+    <div class="fixed bottom-0 left-0 right-0 bg-white border-t p-4 shadow-lg">
         <div class="flex justify-between mb-2 font-bold text-blue-900 text-lg">
-            <span>Total com IPI:</span>
+            <span>Total:</span>
             <span id="total-geral">R$ 0,00</span>
         </div>
-        <button onclick="gerarOrcamento()" class="w-full bg-green-600 text-white py-4 rounded-xl font-bold text-lg shadow-md active:bg-green-700 fast-tap">
+        <button onclick="gerarOrcamento()" class="w-full bg-green-600 text-white py-4 rounded-xl font-bold text-lg">
             GERAR ORÇAMENTO (PDF)
         </button>
     </div>
 
     <script>
-        // CONFIGURAÇÃO ITALL COMÉRCIO
         const OMIE_CONFIG = {
             app_key: '4695613971048',
             app_secret: 'adcacd22b1c64d9520965dac570b3afd'
         };
-
+        const PROXY = "https://cors-anywhere.herokuapp.com/";
         let produtos = [];
         let carrinho = {};
-        const PROXY = "https://cors-anywhere.herokuapp.com/";
 
-        // 1. CARREGAR ESTOQUE OMIE
         async function carregarProdutosOmie() {
-            const endpoint = PROXY + "https://app.omie.com.br/api/v1/geral/produtos/";
+            // Conforme doc: Endpoint Geral de Produtos
+            const url = "https://app.omie.com.br/api/v1/geral/produtos/";
             const payload = {
-                "call": "ListarProdutos",
+                "call": "ListarProdutosResumido", // Usando o método resumido da doc
                 "app_key": OMIE_CONFIG.app_key,
                 "app_secret": OMIE_CONFIG.app_secret,
                 "param": [{ "pagina": 1, "registros_por_pagina": 100, "filtrar_apenas_omiepdv": "N" }]
             };
 
             try {
-                const response = await fetch(endpoint, {
+                const response = await fetch(PROXY + url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
                 const data = await response.json();
+
+                // Tratamento de Erro conforme tipo 'omie_fail' da doc
+                if (data.faultstring || data.code) {
+                    const msg = data.description || data.faultstring || "Erro desconhecido";
+                    document.getElementById('lista-produtos').innerHTML = `<p class="text-red-500 text-center p-4">Erro Omie: ${msg}</p>`;
+                    return;
+                }
+
                 if (data.produto_servico_resumido) {
                     produtos = data.produto_servico_resumido.map(p => ({
                         id: p.codigo_produto,
                         nome: p.descricao,
                         preco: p.valor_unitario || 0,
-                        estoque: p.quantidade_estoque || 0,
-                        ipi: p.aliquota_ipi || 0
+                        codigo: p.codigo // Código do produto (teste0001, etc)
                     }));
                     render();
                 }
             } catch (e) {
-                document.getElementById('lista-produtos').innerHTML = `<p class="text-red-500 text-center p-4">Erro na conexão. Verifique o acesso ao Proxy.</p>`;
+                document.getElementById('lista-produtos').innerHTML = `<p class="text-red-500 text-center p-4">Falha na rede. Ative o Proxy.</p>`;
             }
         }
 
-        // 2. BUSCAR CNPJ COM PROXY
         async function buscarCNPJ() {
             const cnpj = document.getElementById('cnpj-input').value;
             if(cnpj.length < 14) return;
-            const url = `https://publica.cnpj.ws/cnpj/${cnpj}`;
-
             try {
-                const res = await fetch(PROXY + url);
+                const res = await fetch(PROXY + `https://publica.cnpj.ws/cnpj/${cnpj}`);
                 const data = await res.json();
-                const razao = data.estabelecimento?.razao_social || data.razao_social || "CNPJ não encontrado";
-                document.getElementById('razao-social').value = razao;
-            } catch (e) {
-                alert("Erro ao buscar CNPJ. Verifique se o acesso ao Proxy está ativo.");
-            }
+                document.getElementById('razao-social').value = data.estabelecimento?.razao_social || data.razao_social || "Não encontrado";
+            } catch (e) { alert("Ative o acesso ao Proxy primeiro."); }
         }
 
         function render() {
             const termo = document.getElementById('busca-produto').value.toLowerCase();
             const lista = document.getElementById('lista-produtos');
             lista.innerHTML = '';
+            
             const filtrados = produtos.filter(p => p.nome.toLowerCase().includes(termo));
 
             filtrados.forEach(p => {
                 const card = document.createElement('div');
-                card.className = 'product-card bg-white p-3 rounded-lg flex justify-between items-center shadow-sm';
+                card.className = 'bg-white p-3 rounded-lg flex justify-between items-center shadow-sm border';
                 card.innerHTML = `
                     <div class="flex-1">
-                        <h3 class="font-bold text-gray-800 text-sm">${p.nome}</h3>
+                        <h3 class="font-bold text-gray-800 text-xs uppercase">${p.nome}</h3>
                         <p class="text-blue-600 font-bold">R$ ${p.preco.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-                        <p class="text-[10px] text-gray-400">IPI: ${p.ipi}% | Est: ${p.estoque}</p>
+                        <p class="text-[9px] text-gray-400">COD: ${p.id}</p>
                     </div>
                     <div class="flex items-center gap-3">
                         <button onclick="add('${p.id}', -1)" class="bg-gray-200 w-8 h-8 rounded-full font-bold">-</button>
@@ -144,7 +139,7 @@
             let total = 0;
             Object.keys(carrinho).forEach(id => {
                 const p = produtos.find(prod => prod.id == id);
-                total += (p.preco * (1 + p.ipi/100)) * carrinho[id];
+                total += p.preco * carrinho[id];
             });
             document.getElementById('total-geral').innerText = `R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
         }
@@ -153,14 +148,16 @@
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
             const cliente = document.getElementById('razao-social').value || "Cliente Novo";
-            doc.text("ORÇAMENTO - ITALL COMÉRCIO", 10, 20);
+            doc.setFontSize(14);
+            doc.text("ITALL COMÉRCIO - ORÇAMENTO", 10, 20);
+            doc.setFontSize(10);
             doc.text(`Cliente: ${cliente}`, 10, 30);
             const rows = Object.keys(carrinho).map(id => {
                 const p = produtos.find(prod => prod.id == id);
-                return [p.nome, carrinho[id], p.preco.toFixed(2), p.ipi + "%", (p.preco * (1 + p.ipi/100) * carrinho[id]).toFixed(2)];
+                return [p.nome, carrinho[id], p.preco.toFixed(2), (p.preco * carrinho[id]).toFixed(2)];
             });
-            doc.autoTable({ startY: 40, head: [['Produto', 'Qtd', 'Unit.', 'IPI', 'Subtotal']], body: rows });
-            doc.save(`Orcamento_${cliente.split(' ')[0]}.pdf`);
+            doc.autoTable({ startY: 40, head: [['Produto', 'Qtd', 'Unit.', 'Subtotal']], body: rows });
+            doc.save(`Orcamento_Itall.pdf`);
         }
 
         carregarProdutosOmie();
