@@ -280,7 +280,10 @@
                     
                     const res = await fetch("/api/clientes", {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Cache-Control': 'no-cache'
+                        },
                         body: JSON.stringify({ buscar: termo })
                     });
                     
