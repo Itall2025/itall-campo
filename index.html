@@ -220,7 +220,7 @@
                     </div>
                     <div class="flex-1 text-left">
                         <h3 class="font-bold text-gray-800 text-[11px] uppercase leading-tight mb-1">${p.nome}</h3>
-                        <p class="text-blue-600 font-black text-base">R$ ${precoAtual.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                        <p class="text-blue-600 font-black text-base">R$ ${precoAtual.toFixed(2).replace('.', ',')}</p>
                         <p class="text-[9px] ${p.saldo > 0 ? 'text-green-600' : 'text-red-500'} font-bold">Estoque: ${p.saldo}</p>
                     </div>
                     <div class="flex items-center gap-1">
@@ -257,7 +257,7 @@
                 const precoAtual = getPrecoAtual(p);
                 total += precoAtual * carrinho[id];
             });
-            document.getElementById('total-geral').innerText = `R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
+            document.getElementById('total-geral').innerText = `R$ ${total.toFixed(2).replace('.', ',')}`;
         }
 
         async function buscarClientes() {
@@ -351,15 +351,16 @@
             const rows = Object.keys(carrinho).map(id => {
                 const p = produtos.find(prod => prod.id == id);
                 const precoAtual = getPrecoAtual(p);
-                return [p.nome, carrinho[id], `R$ ${precoAtual.toFixed(2)}`, `R$ ${(precoAtual * carrinho[id]).toFixed(2)}`];
+                return [p.nome, carrinho[id], `R$ ${precoAtual.toFixed(2).replace('.', ',')}`, `R$ ${(precoAtual * carrinho[id]).toFixed(2).replace('.', ',')}`];
             });
             
+            const totalGeral = document.getElementById('total-geral').innerText;
             doc.autoTable({
                 startY: 50,
                 head: [['Produto', 'Qtd', 'Unitário', 'Total']],
                 body: rows,
                 headStyles: { fillColor: [30, 58, 138] },
-                foot: [['', '', 'TOTAL GERAL', document.getElementById('total-geral').innerText]],
+                foot: [['', '', 'TOTAL GERAL', totalGeral]],
                 footStyles: { fillColor: [240, 240, 240], textColor: [30, 58, 138], fontStyle: 'bold' }
             });
             
@@ -374,7 +375,7 @@
             Object.keys(carrinho).forEach(id => {
                 const p = produtos.find(prod => prod.id == id);
                 const precoAtual = getPrecoAtual(p);
-                msg += `- ${carrinho[id]}x ${p.nome} (R$ ${precoAtual.toFixed(2)})%0A`;
+                msg += `- ${carrinho[id]}x ${p.nome} (R$ ${precoAtual.toFixed(2).replace('.', ',')})%0A`;
             });
             msg += `%0A*Total Geral:* ${document.getElementById('total-geral').innerText}`;
             window.open(`https://api.whatsapp.com/send?text=${msg}`);
