@@ -228,6 +228,8 @@ app.post('/api/clientes', async (req, res) => {
                 cnpj: data.clientes_cadastro[0]?.cnpj_cpf
             });
             
+            let primeiroMatch = null;
+            
             const clientesFiltrados = data.clientes_cadastro.filter(c => {
                 const razao = (c.razao_social || '').toLowerCase().trim();
                 const fantasia = (c.nome_fantasia || '').toLowerCase().trim();
@@ -240,15 +242,16 @@ app.post('/api/clientes', async (req, res) => {
                 const matchCNPJ = cnpj.includes(termoLimpo);
                 const match = matchRazao || matchFantasia || matchCNPJ;
                 
-                // Debug: log do primeiro cliente que bater
-                if (match && clientesFiltrados.length === 0) {
-                    console.log(`  ✅ PRIMEIRO MATCH:`, {
+                // Guardar primeiro match para debug
+                if (match && !primeiroMatch) {
+                    primeiroMatch = {
                         razao: c.razao_social,
                         fantasia: c.nome_fantasia,
+                        cnpj: c.cnpj_cpf,
                         matchRazao,
                         matchFantasia,
                         matchCNPJ
-                    });
+                    };
                 }
                 
                 return match;
@@ -256,11 +259,17 @@ app.post('/api/clientes', async (req, res) => {
             
             console.log(`  🔍 Após aplicar filtro: ${clientesFiltrados.length} clientes encontrados`);
             
+            if (primeiroMatch) {
+                console.log(`  ✅ PRIMEIRO MATCH:`, primeiroMatch);
+            }
+            
             if (clientesFiltrados.length > 0) {
                 console.log(`  → Primeiros 3 resultados:`);
                 clientesFiltrados.slice(0, 3).forEach((c, idx) => {
                     console.log(`     ${idx + 1}. ${c.razao_social || c.nome_fantasia} | ${c.cnpj_cpf}`);
                 });
+            } else {
+                console.log(`  ⚠️ Nenhum cliente passou pelo filtro com o termo "${termo}"`);
             }
             
             // Limitar a 20 resultados e mapear
