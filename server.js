@@ -7,7 +7,10 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('.'));
 
-const CONFIG = { key: '4695613971048', secret: 'adcacd22b1c64d9520965dac570b3afd' };
+const CONFIG = { 
+  key: process.env.OMIE_API_KEY || '4695613971048', 
+  secret: process.env.OMIE_API_SECRET || 'adcacd22b1c64d9520965dac570b3afd' 
+};
 let cacheEstoque = null;
 let cacheTime = 0;
 const CACHE_DURATION = 60000; // 1 minuto
