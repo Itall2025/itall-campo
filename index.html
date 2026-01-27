@@ -370,6 +370,8 @@
                 
                 if (data.sucesso && data.cliente) {
                     const cliente = data.cliente;
+                    const origem = data.origem === 'OMIE' ? '(Cadastrado no OMIE)' : '(Encontrado em registro público)';
+                    
                     document.getElementById('razao-social').value = cliente.razao_social || cliente.nome_fantasia || '';
                     document.getElementById('cnpj-input').value = cliente.cnpj_cpf || '';
                     
@@ -387,15 +389,15 @@
                     }
                     
                     console.log(`✅ Cliente carregado com sucesso: ${cliente.razao_social}`);
-                    alert(`Cliente encontrado: ${cliente.razao_social}`);
+                    alert(`✅ Cliente encontrado ${origem}\n\n${cliente.razao_social}`);
                 } else {
                     console.log('  ℹ️ Cliente não encontrado com esse CNPJ');
-                    alert('Cliente não encontrado com este CNPJ. Verifique e tente novamente.');
+                    alert('❌ Cliente não encontrado.\n\nVerifique o CNPJ e tente novamente.');
                     document.getElementById('razao-social').value = '';
                 }
             } catch (e) { 
                 console.error('❌ Erro ao buscar CNPJ:', e);
-                alert("Erro ao buscar CNPJ. Verifique se o número está correto ou tente novamente.");
+                alert("❌ Erro ao buscar CNPJ.\n\nVerifique se o número está correto ou tente novamente.");
             }
         }
 

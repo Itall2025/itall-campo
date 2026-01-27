@@ -409,12 +409,56 @@ app.get('/api/cnpj/:cnpj', async (req, res) => {
             return res.status(400).json({ erro: 'CNPJ inválido', clientes: [] });
         }
         
+        console.log(`🔎 Buscando cliente por CNPJ: ${cnpj}...`);
+        
+        // Primeiro tenta buscar no OMIE
+        let cliente = await buscarClienteOmie(cnpj);
+        
+        if (cliente) {
+            console.log(`  ✅ Cliente encontrado NO OMIE: ${cliente.razao_social}`);
+            return res.json({
+                sucesso: true,
+                origem: 'OMIE',
+                cliente: cliente
+            });
+        }
+        
+        console.log(`  ⚠️ Cliente não encontrado no OMIE, tentando API pública...`);
+        
+        // Fallback: tenta API pública de CNPJ
+        cliente = await buscarClienteAPIPublica(cnpj);
+        
+        if (cliente) {
+            console.log(`  ✅ Cliente encontrado em API PÚBLICA: ${cliente.razao_social}`);
+            return res.json({
+                sucesso: true,
+                origem: 'API_PUBLICA',
+                cliente: cliente
+            });
+        }
+        
+        console.log(`  ❌ Cliente não encontrado em nenhuma fonte`);
+        res.json({ 
+            sucesso: false, 
+            mensagem: 'Cliente não encontrado no OMIE nem em registros públicos',
+            cliente: null 
+        });
+        
+    } catch (error) {
+        console.error('❌ Erro ao buscar cliente por CNPJ:', error.message);
+        res.status(500).json({ erro: error.message, sucesso: false });
+    }
+});
+
+// Função auxiliar: buscar cliente no OMIE por CNPJ
+async function buscarClienteOmie(cnpj) {
+    try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 30000);
         
-        console.log(`🔎 Buscando cliente por CNPJ: ${cnpj}...`);
+        console.log(`    🔍 Consultando OMIE com CNPJ: ${cnpj}`);
         
-        // Buscar cliente por CNPJ usando o endpoint de clientes
+        // Primeiro tenta com filtro (mais rápido)
         const response = await fetch("https://app.omie.com.br/api/v1/geral/clientes/", {
             method: 'POST',
             headers: { 
@@ -428,7 +472,7 @@ app.get('/api/cnpj/:cnpj', async (req, res) => {
                 "app_secret": CONFIG.secret,
                 "param": [{
                     "pagina": 1,
-                    "registros_por_pagina": 10,
+                    "registros_por_pagina": 100,
                     "apenas_importado_api": "N",
                     "clientesFiltro": {
                         "cnpj_cpf": cnpj
@@ -439,33 +483,130 @@ app.get('/api/cnpj/:cnpj', async (req, res) => {
         clearTimeout(timeout);
         
         const data = await response.json();
+        console.log(`    → Response OMIE com filtro:`, {
+            status: response.status,
+            tem_clientes: !!data.clientes_cadastro,
+            total: data.clientes_cadastro?.length || 0,
+            chaves_resposta: Object.keys(data).slice(0, 5)
+        });
         
         if (data.clientes_cadastro && Array.isArray(data.clientes_cadastro) && data.clientes_cadastro.length > 0) {
-            const cliente = data.clientes_cadastro[0]; // Pegar primeiro resultado
-            console.log(`  ✅ Cliente encontrado: ${cliente.razao_social}`);
-            res.json({
-                sucesso: true,
-                cliente: {
-                    razao_social: cliente.razao_social,
-                    nome_fantasia: cliente.nome_fantasia,
-                    cnpj_cpf: cliente.cnpj_cpf,
-                    codigo_cliente_omie: cliente.codigo_cliente_omie,
-                    recomendacoes: cliente.recomendacoes
-                }
+            const c = data.clientes_cadastro[0];
+            console.log(`    ✅ Cliente encontrado com filtro:`, {
+                razao_social: c.razao_social,
+                cnpj_cpf: c.cnpj_cpf,
+                codigo_cliente_omie: c.codigo_cliente_omie
             });
-        } else {
-            console.log(`  ⚠️ Cliente não encontrado com CNPJ: ${cnpj}`);
-            res.json({ 
-                sucesso: false, 
-                mensagem: 'Cliente não encontrado',
-                cliente: null 
-            });
+            return {
+                razao_social: c.razao_social,
+                nome_fantasia: c.nome_fantasia,
+                cnpj_cpf: c.cnpj_cpf,
+                codigo_cliente_omie: c.codigo_cliente_omie,
+                recomendacoes: c.recomendacoes
+            };
         }
+        
+        // Se não encontrar com filtro, lista primeira página e filtra localmente
+        console.log(`    ⚠️ Filtro não retornou resultado, tentando listar e filtrar localmente...`);
+        
+        const responseListar = await fetch("https://app.omie.com.br/api/v1/geral/clientes/", {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0'
+            },
+            signal: controller.signal,
+            body: JSON.stringify({
+                "call": "ListarClientes",
+                "app_key": CONFIG.key,
+                "app_secret": CONFIG.secret,
+                "param": [{
+                    "pagina": 1,
+                    "registros_por_pagina": 500,
+                    "apenas_importado_api": "N"
+                }]
+            })
+        });
+        clearTimeout(timeout);
+        
+        const dataListar = await responseListar.json();
+        console.log(`    → Listou ${dataListar.clientes_cadastro?.length || 0} clientes da página 1`);
+        
+        if (dataListar.clientes_cadastro && Array.isArray(dataListar.clientes_cadastro)) {
+            // Filtrar localmente por CNPJ
+            const clienteEncontrado = dataListar.clientes_cadastro.find(c => 
+                (c.cnpj_cpf || '').replace(/\D/g, '') === cnpj.replace(/\D/g, '')
+            );
+            
+            if (clienteEncontrado) {
+                console.log(`    ✅ Cliente encontrado no filtro local:`, {
+                    razao_social: clienteEncontrado.razao_social,
+                    cnpj_cpf: clienteEncontrado.cnpj_cpf
+                });
+                return {
+                    razao_social: clienteEncontrado.razao_social,
+                    nome_fantasia: clienteEncontrado.nome_fantasia,
+                    cnpj_cpf: clienteEncontrado.cnpj_cpf,
+                    codigo_cliente_omie: clienteEncontrado.codigo_cliente_omie,
+                    recomendacoes: clienteEncontrado.recomendacoes
+                };
+            }
+        }
+        
+        console.log(`    ❌ Cliente não encontrado nem com filtro nem em primeira página`);
+        return null;
     } catch (error) {
-        console.error('❌ Erro ao buscar cliente por CNPJ:', error.message);
-        res.status(500).json({ erro: error.message, sucesso: false });
+        console.error('    ❌ Erro OMIE:', error.message);
+        return null;
     }
-});
+}
+
+// Função auxiliar: buscar cliente em API pública (Minha Receita Federal)
+async function buscarClienteAPIPublica(cnpj) {
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        
+        // Tenta usar a API pública da Minha Receita Federal (gratuita, sem autenticação)
+        const response = await fetch(`https://minhareceita.org/${cnpj}`, {
+            method: 'GET',
+            headers: { 
+                'User-Agent': 'Mozilla/5.0'
+            },
+            signal: controller.signal
+        });
+        clearTimeout(timeout);
+        
+        const data = await response.json();
+        console.log(`    → Response API Pública (resumo):`, {
+            status: response.status,
+            nome: data.nome ? 'encontrado' : 'não encontrado'
+        });
+        
+        if (data && data.nome) {
+            return {
+                razao_social: data.nome || data.nome_fantasia || '',
+                nome_fantasia: data.nome_fantasia || '',
+                cnpj_cpf: data.cnpj || cnpj,
+                codigo_cliente_omie: null,
+                recomendacoes: null,
+                origem_externa: true,
+                logradouro: data.logradouro,
+                numero: data.numero,
+                complemento: data.complemento,
+                bairro: data.bairro,
+                municipio: data.municipio,
+                uf: data.uf,
+                cep: data.cep
+            };
+        }
+        
+        return null;
+    } catch (error) {
+        console.error('    ❌ Erro API Pública:', error.message);
+        return null;
+    }
+}
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
