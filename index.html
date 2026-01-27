@@ -110,13 +110,29 @@
                         <p class="text-blue-600 font-black text-base">R$ ${p.preco.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
                         <p class="text-[9px] ${p.saldo > 0 ? 'text-green-600' : 'text-red-500'} font-bold">Estoque: ${p.saldo}</p>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <button onclick="add('${p.id}', -1)" class="bg-gray-100 text-gray-400 w-8 h-8 rounded-lg font-bold">-</button>
-                        <span class="font-bold text-blue-900 text-sm w-4 text-center">${carrinho[p.id] || 0}</span>
-                        <button onclick="add('${p.id}', 1)" class="bg-blue-900 text-white w-8 h-8 rounded-lg font-bold shadow-md">+</button>
+                    <div class="flex items-center gap-1">
+                        <button onclick="add('${p.id}', -1)" class="bg-gray-100 text-gray-400 w-7 h-7 rounded-lg font-bold text-sm">−</button>
+                        <input type="number" min="0" value="${carrinho[p.id] || 0}" onchange="updateQtd('${p.id}', this.value)" class="font-bold text-blue-900 text-sm w-12 text-center border border-gray-300 rounded px-1">
+                        <button onclick="add('${p.id}', 1)" class="bg-blue-900 text-white w-7 h-7 rounded-lg font-bold text-sm shadow-md">+</button>
                     </div>`;
                 lista.appendChild(card);
             });
+        }
+        
+        function updateQtd(id, value) {
+            const qtd = parseInt(value) || 0;
+            if (qtd <= 0) {
+                delete carrinho[id];
+            } else {
+                carrinho[id] = qtd;
+            }
+            render();
+            let total = 0;
+            Object.keys(carrinho).forEach(id => {
+                const p = produtos.find(prod => prod.id == id);
+                total += p.preco * carrinho[id];
+            });
+            document.getElementById('total-geral').innerText = `R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
         }
 
         function add(id, delta) {

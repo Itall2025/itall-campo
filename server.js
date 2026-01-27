@@ -67,11 +67,86 @@ app.post('/api/estoque', async (req, res) => {
             paginaAtual++;
         }
         
-        console.log(`✅ Total de ${todosOsProdutos.length} produtos carregados`);
+        // Buscar produtos com imagens - TENTATIVA COM PARÂMETROS DIFERENTES
+        console.log('📸 Tentando buscar imagens dos produtos...');
+        let mapaImagens = {};
+        
+        try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 30000);
+            
+            const response = await fetch("https://app.omie.com.br/api/v1/geral/produtos/", {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Mozilla/5.0'
+                },
+                signal: controller.signal,
+                body: JSON.stringify({
+                    "call": "ListarProdutos",
+                    "app_key": CONFIG.key,
+                    "app_secret": CONFIG.secret,
+                    "param": [{
+                        "pagina": 1,
+                        "registros_por_pagina": 500,
+                        "apenas_importado_api": "N",
+                        "filtrar_apenas_omiepdv": "N"
+                    }]
+                })
+            });
+            clearTimeout(timeout);
+            
+            const dataProd = await response.json();
+            console.log('  → Resposta API produtos:', JSON.stringify(dataProd).substring(0, 300));
+            
+            if (dataProd.produto_servico_cadastro && dataProd.produto_servico_cadastro.length > 0) {
+                // Debug: mostrar primeiro produto
+                const primeiroProd = dataProd.produto_servico_cadastro[0];
+                console.log('  → Exemplo produto API:', {
+                    codigo_produto: primeiroProd.codigo_produto,
+                    codigo_produto_integracao: primeiroProd.codigo_produto_integracao,
+                    descricao: primeiroProd.descricao,
+                    tem_imagem: primeiroProd.imagens?.length > 0
+                });
+                
+                dataProd.produto_servico_cadastro.forEach(p => {
+                    if (p.imagens && p.imagens.length > 0) {
+                        // Mapear tanto por codigo_produto quanto por codigo_produto_integracao
+                        mapaImagens[p.codigo_produto] = p.imagens[0].url_imagem;
+                        if (p.codigo_produto_integracao) {
+                            mapaImagens[p.codigo_produto_integracao] = p.imagens[0].url_imagem;
+                        }
+                    }
+                });
+                console.log(`  ✅ ${Object.keys(mapaImagens).length} mapeamentos de imagens criados`);
+            } else {
+                console.log('  ⚠️ API de produtos retornou vazio');
+            }
+        } catch (err) {
+            console.log('  ❌ Erro ao buscar imagens:', err.message);
+        }
+        
+        // Juntar estoque com imagens
+        const produtosCompletos = todosOsProdutos.map(p => ({
+            ...p,
+            url_imagem: mapaImagens[p.cCodigo] || null
+        }));
+        
+        // Debug: mostrar exemplo de estoque
+        if (todosOsProdutos.length > 0) {
+            console.log('  → Exemplo estoque:', {
+                cCodigo: todosOsProdutos[0].cCodigo,
+                cDescricao: todosOsProdutos[0].cDescricao,
+                url_imagem: mapaImagens[todosOsProdutos[0].cCodigo] || 'NÃO MAPEADO'
+            });
+        }
+        
+        const comImagem = produtosCompletos.filter(p => p.url_imagem).length;
+        console.log(`✅ Total: ${produtosCompletos.length} produtos (${comImagem} com imagem)`);
         
         const response = {
-            nTotRegistros: todosOsProdutos.length,
-            produtos: todosOsProdutos
+            nTotRegistros: produtosCompletos.length,
+            produtos: produtosCompletos
         };
         
         // Salvar em cache
