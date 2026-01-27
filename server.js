@@ -222,50 +222,43 @@ app.post('/api/clientes', async (req, res) => {
         if (data.clientes_cadastro && Array.isArray(data.clientes_cadastro)) {
             // APLICAR FILTRO LOCALMENTE
             console.log(`  🔍 Aplicando filtro com termo: "${termo}"`);
-            console.log(`  → Exemplo de cliente antes do filtro:`, {
+            console.log(`  → Total de clientes antes do filtro: ${data.clientes_cadastro.length}`);
+            console.log(`  → Exemplo de cliente:`, {
                 razao: data.clientes_cadastro[0]?.razao_social,
-                fantasia: data.clientes_cadastro[0]?.nome_fantasia,
-                cnpj: data.clientes_cadastro[0]?.cnpj_cpf
+                fantasia: data.clientes_cadastro[0]?.nome_fantasia
             });
             
-            let primeiroMatch = null;
+            const resultadosFiltro = [];
             
-            const clientesFiltrados = data.clientes_cadastro.filter(c => {
+            // Filtrar manualmente para ter mais controle
+            for (const c of data.clientes_cadastro) {
                 const razao = (c.razao_social || '').toLowerCase().trim();
                 const fantasia = (c.nome_fantasia || '').toLowerCase().trim();
                 const cnpj = (c.cnpj_cpf || '').replace(/\D/g, '');
                 const termoLimpo = termo.replace(/\D/g, '');
                 
                 // Verificar se o termo está em algum desses campos
-                const matchRazao = razao.includes(termo);
-                const matchFantasia = fantasia.includes(termo);
-                const matchCNPJ = cnpj.includes(termoLimpo);
-                const match = matchRazao || matchFantasia || matchCNPJ;
-                
-                // Guardar primeiro match para debug
-                if (match && !primeiroMatch) {
-                    primeiroMatch = {
-                        razao: c.razao_social,
-                        fantasia: c.nome_fantasia,
-                        cnpj: c.cnpj_cpf,
-                        matchRazao,
-                        matchFantasia,
-                        matchCNPJ
-                    };
+                if (razao.includes(termo) || fantasia.includes(termo) || cnpj.includes(termoLimpo)) {
+                    resultadosFiltro.push(c);
+                    
+                    // Log do primeiro match
+                    if (resultadosFiltro.length === 1) {
+                        console.log(`  ✅ PRIMEIRO MATCH:`, {
+                            razao: c.razao_social,
+                            fantasia: c.nome_fantasia,
+                            razao_match: razao.includes(termo),
+                            fantasia_match: fantasia.includes(termo),
+                            cnpj_match: cnpj.includes(termoLimpo)
+                        });
+                    }
                 }
-                
-                return match;
-            });
-            
-            console.log(`  🔍 Após aplicar filtro: ${clientesFiltrados.length} clientes encontrados`);
-            
-            if (primeiroMatch) {
-                console.log(`  ✅ PRIMEIRO MATCH:`, primeiroMatch);
             }
             
-            if (clientesFiltrados.length > 0) {
+            console.log(`  🔍 Após aplicar filtro: ${resultadosFiltro.length} clientes encontrados`);
+            
+            if (resultadosFiltro.length > 0) {
                 console.log(`  → Primeiros 3 resultados:`);
-                clientesFiltrados.slice(0, 3).forEach((c, idx) => {
+                resultadosFiltro.slice(0, 3).forEach((c, idx) => {
                     console.log(`     ${idx + 1}. ${c.razao_social || c.nome_fantasia} | ${c.cnpj_cpf}`);
                 });
             } else {
@@ -273,7 +266,7 @@ app.post('/api/clientes', async (req, res) => {
             }
             
             // Limitar a 20 resultados e mapear
-            clientesRetorno = clientesFiltrados
+            clientesRetorno = resultadosFiltro
                 .slice(0, 20)
                 .map(c => ({
                     nCodCliente: c.codigo_cliente_omie,
