@@ -60,11 +60,14 @@ app.post('/api/estoque', async (req, res) => {
             clearTimeout(timeout);
             
             const data = await response.json();
+            console.log(`  → Resposta página ${paginaAtual}:`, JSON.stringify(data).substring(0, 500));
             totalPaginas = data.nTotPaginas || 1;
             
             if (data.produtos) {
                 todosOsProdutos = todosOsProdutos.concat(data.produtos);
                 console.log(`  ✅ Estoque página ${paginaAtual}/${totalPaginas}: ${data.produtos.length} produtos`);
+            } else {
+                console.log(`  ⚠️ Resposta da página ${paginaAtual} não contém 'produtos'`);
             }
             
             paginaAtual++;
