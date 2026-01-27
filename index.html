@@ -294,7 +294,12 @@
                     
                     // Mostrar debug info do servidor
                     if (data.debug) {
-                        console.log(`  📊 DEBUG DO SERVIDOR:`, data.debug);
+                        console.log(`  📊 DEBUG DO SERVIDOR:`);
+                        console.log(`     Versão: ${data.debug.versao}`);
+                        console.log(`     Termo buscado: "${data.debug.termo_buscado}"`);
+                        console.log(`     Total API OMIE: ${data.debug.total_api}`);
+                        console.log(`     Total filtrado: ${data.debug.total_filtrados}`);
+                        console.log(`     Timestamp: ${data.debug.timestamp}`);
                     }
                     
                     // Log super detalhado
