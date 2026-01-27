@@ -181,8 +181,9 @@ app.post('/api/clientes', async (req, res) => {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 30000);
         
-        console.log(`👥 Buscando clientes: ${buscar}...`);
+        console.log(`👥 Buscando clientes com termo: "${buscar}"...`);
         
+        // Buscar clientes - tentar com clientesFiltro primeiro
         const response = await fetch("https://app.omie.com.br/api/v1/geral/clientes/", {
             method: 'POST',
             headers: { 
@@ -196,7 +197,7 @@ app.post('/api/clientes', async (req, res) => {
                 "app_secret": CONFIG.secret,
                 "param": [{
                     "pagina": 1,
-                    "registros_por_pagina": 50,
+                    "registros_por_pagina": 100,
                     "apenas_importado_api": "N",
                     "clientesFiltro": {
                         "razao_social": buscar || "",
@@ -209,23 +210,38 @@ app.post('/api/clientes', async (req, res) => {
         clearTimeout(timeout);
         
         const data = await response.json();
+        console.log(`  → Response Omie:`, JSON.stringify(data).substring(0, 300));
+        
+        let clientesRetorno = [];
         
         if (data.clientes_cadastro && Array.isArray(data.clientes_cadastro)) {
-            console.log(`  ✅ ${data.clientes_cadastro.length} clientes encontrados`);
-            res.json({ 
-                clientes: data.clientes_cadastro.map(c => ({
+            console.log(`  ✅ ${data.clientes_cadastro.length} clientes retornados pela API Omie`);
+            
+            clientesRetorno = data.clientes_cadastro
+                // Filtrar localmente por segurança
+                .filter(c => {
+                    const razao = (c.razao_social || '').toLowerCase();
+                    const fantasia = (c.nome_fantasia || '').toLowerCase();
+                    const cnpj = (c.cnpj_cpf || '').toLowerCase();
+                    const termo = (buscar || '').toLowerCase();
+                    return razao.includes(termo) || fantasia.includes(termo) || cnpj.includes(termo);
+                })
+                .slice(0, 20) // Limitar a 20 resultados
+                .map(c => ({
                     nCodCliente: c.codigo_cliente_omie,
-                    cNomeFantasia: c.nome_fantasia,
-                    cRazaoSocial: c.razao_social,
-                    cCNPJ: c.cnpj_cpf,
+                    cNomeFantasia: c.nome_fantasia || '',
+                    cRazaoSocial: c.razao_social || '',
+                    cCNPJ: c.cnpj_cpf || '',
                     cCondPagto: c.recomendacoes?.numero_parcelas || '',
                     cCondPagtoDesc: c.recomendacoes?.numero_parcelas ? `${c.recomendacoes.numero_parcelas}x` : 'Padrão'
-                }))
-            });
+                }));
+                
+            console.log(`  ✅ ${clientesRetorno.length} clientes após filtro local`);
         } else {
-            console.log('  ⚠️ Nenhum cliente encontrado');
-            res.json({ clientes: [] });
+            console.log(`  ⚠️ Response da API não contém 'clientes_cadastro'. Chaves disponíveis: ${Object.keys(data).join(', ')}`);
         }
+        
+        res.json({ clientes: clientesRetorno });
     } catch (error) {
         console.error('❌ Erro ao buscar clientes:', error.message);
         res.status(500).json({ erro: error.message, clientes: [] });
