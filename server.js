@@ -197,7 +197,12 @@ app.post('/api/clientes', async (req, res) => {
                 "param": [{
                     "pagina": 1,
                     "registros_por_pagina": 50,
-                    "pesquisa": buscar || ""
+                    "apenas_importado_api": "N",
+                    "clientesFiltro": {
+                        "razao_social": buscar || "",
+                        "nome_fantasia": buscar || "",
+                        "cnpj_cpf": buscar || ""
+                    }
                 }]
             })
         });
@@ -205,16 +210,16 @@ app.post('/api/clientes', async (req, res) => {
         
         const data = await response.json();
         
-        if (data.clientes && Array.isArray(data.clientes)) {
-            console.log(`  ✅ ${data.clientes.length} clientes encontrados`);
+        if (data.clientes_cadastro && Array.isArray(data.clientes_cadastro)) {
+            console.log(`  ✅ ${data.clientes_cadastro.length} clientes encontrados`);
             res.json({ 
-                clientes: data.clientes.map(c => ({
-                    nCodCliente: c.nCodCliente,
-                    cNomeFantasia: c.cNomeFantasia,
-                    cRazaoSocial: c.cRazaoSocial,
-                    cCNPJ: c.cCNPJ,
-                    cCondPagto: c.cCondPagto || '',
-                    cCondPagtoDesc: c.cCondPagtoDesc || ''
+                clientes: data.clientes_cadastro.map(c => ({
+                    nCodCliente: c.codigo_cliente_omie,
+                    cNomeFantasia: c.nome_fantasia,
+                    cRazaoSocial: c.razao_social,
+                    cCNPJ: c.cnpj_cpf,
+                    cCondPagto: c.recomendacoes?.numero_parcelas || '',
+                    cCondPagtoDesc: c.recomendacoes?.numero_parcelas ? `${c.recomendacoes.numero_parcelas}x` : 'Padrão'
                 }))
             });
         } else {
