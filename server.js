@@ -174,6 +174,54 @@ app.post('/api/estoque', async (req, res) => {
     }
 });
 
+// Endpoint para listar formas de pagamento
+app.post('/api/formas-pagamento', async (req, res) => {
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        
+        console.log('💳 Buscando formas de pagamento...');
+        
+        const response = await fetch("https://app.omie.com.br/api/v1/produtos/formaspagvendas/", {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0'
+            },
+            signal: controller.signal,
+            body: JSON.stringify({
+                "call": "ListarFormasPagVendas",
+                "app_key": CONFIG.key,
+                "app_secret": CONFIG.secret,
+                "param": [{
+                    "pagina": 1,
+                    "registros_por_pagina": 100
+                }]
+            })
+        });
+        clearTimeout(timeout);
+        
+        const data = await response.json();
+        
+        if (data.cadastros && Array.isArray(data.cadastros)) {
+            console.log(`  ✅ ${data.cadastros.length} formas de pagamento encontradas`);
+            res.json({ 
+                formas: data.cadastros.map(f => ({
+                    codigo: f.cCodigo,
+                    descricao: f.cDescricao,
+                    parcelas: f.nQtdeParc
+                }))
+            });
+        } else {
+            console.log('  ⚠️ Nenhuma forma de pagamento encontrada');
+            res.json({ formas: [] });
+        }
+    } catch (error) {
+        console.error('❌ Erro ao buscar formas de pagamento:', error.message);
+        res.status(500).json({ erro: error.message, formas: [] });
+    }
+});
+
 // Endpoint para listar tabelas de preços
 app.post('/api/tabelas-precos', async (req, res) => {
     try {

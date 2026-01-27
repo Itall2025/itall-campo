@@ -25,6 +25,11 @@
                 <select id="tabela-precos" onchange="mudarTabela()" class="flex-1 border p-3 rounded-xl text-sm bg-gray-50 outline-none font-bold">
                     <option value="">📊 Tabela de Preços Padrão</option>
                 </select>
+                <select id="forma-pagamento" onchange="mudarFormaPagamento()" class="flex-1 border p-3 rounded-xl text-sm bg-gray-50 outline-none font-bold">
+                    <option value="">💳 Forma de Pagamento</option>
+                </select>
+            </div>
+            <div class="flex gap-2 mb-2">
                 <input type="number" id="cnpj-input" placeholder="CNPJ do Cliente" class="flex-1 border p-3 rounded-xl text-sm bg-gray-50 outline-none">
                 <button onclick="buscarCNPJ()" class="bg-blue-600 hover:bg-blue-800 text-white px-6 rounded-xl font-bold text-xs uppercase transition-all">Buscar</button>
             </div>
@@ -59,6 +64,7 @@
         let produtos = [], estoqueSaldos = {}, carrinho = {};
         let tabelaSelecionada = null;
         let precosTabela = {};
+        let formaPagamentoSelecionada = null;
 
         async function carregarTabelasPrecos() {
             try {
@@ -83,6 +89,37 @@
             } catch (e) {
                 console.error('Erro ao carregar tabelas:', e);
             }
+        }
+
+        async function carregarFormasPagamento() {
+            try {
+                const res = await fetch("/api/formas-pagamento", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await res.json();
+                
+                const select = document.getElementById('forma-pagamento');
+                if (data.formas && data.formas.length > 0) {
+                    data.formas.forEach(forma => {
+                        const option = document.createElement('option');
+                        option.value = forma.codigo;
+                        const parcelas = forma.parcelas > 1 ? ` (${forma.parcelas}x)` : '';
+                        option.textContent = `💳 ${forma.descricao}${parcelas}`;
+                        select.appendChild(option);
+                    });
+                    console.log(`✅ ${data.formas.length} formas de pagamento carregadas`);
+                }
+            } catch (e) {
+                console.error('Erro ao carregar formas de pagamento:', e);
+            }
+        }
+
+        function mudarFormaPagamento() {
+            const selectElement = document.getElementById('forma-pagamento');
+            formaPagamentoSelecionada = selectElement.options[selectElement.selectedIndex].text;
+            console.log(`✅ Forma de pagamento selecionada: ${formaPagamentoSelecionada}`);
         }
 
         async function mudarTabela() {
@@ -141,8 +178,9 @@
                     console.log('Primeiro produto com preço:', produtos[0]);
                     document.getElementById('contagem-produtos').innerText = `${produtos.length} ITENS ATIVOS`;
                     
-                    // Carregar tabelas de preços
+                    // Carregar tabelas de preços e formas de pagamento
                     await carregarTabelasPrecos();
+                    await carregarFormasPagamento();
                     render();
                 } else {
                     throw new Error('Nenhum produto encontrado no estoque');
@@ -236,6 +274,7 @@
             const doc = new jsPDF();
             const cliente = document.getElementById('razao-social').value || "Cliente Itall";
             const tabelaInfo = tabelaSelecionada ? ` - ${tabelaSelecionada}` : '';
+            const formaPagInfo = formaPagamentoSelecionada ? ` - ${formaPagamentoSelecionada}` : '';
             
             doc.setFontSize(18);
             doc.setTextColor(30, 58, 138);
@@ -246,6 +285,7 @@
             doc.text(`Cliente: ${cliente}`, 14, 30);
             doc.text(`Data: ${new Date().toLocaleDateString('pt-BR')}`, 14, 35);
             doc.text(`Tabela de Preços: ${tabelaInfo || 'Padrão'}`, 14, 40);
+            doc.text(`Forma de Pagamento: ${formaPagInfo || 'Não informada'}`, 14, 45);
             
             const rows = Object.keys(carrinho).map(id => {
                 const p = produtos.find(prod => prod.id == id);
@@ -254,7 +294,7 @@
             });
             
             doc.autoTable({
-                startY: 45,
+                startY: 50,
                 head: [['Produto', 'Qtd', 'Unitário', 'Total']],
                 body: rows,
                 headStyles: { fillColor: [30, 58, 138] },
@@ -268,7 +308,8 @@
         function enviarWhatsApp() {
             const cliente = document.getElementById('razao-social').value || "Cliente Itall";
             const tabelaInfo = tabelaSelecionada ? ` - ${tabelaSelecionada}` : '';
-            let msg = `*Orçamento Itall Comércio*%0A*Cliente:* ${cliente}%0A*Tabela:* ${tabelaInfo || 'Padrão'}%0A%0A*Itens:*%0A`;
+            const formaPagInfo = formaPagamentoSelecionada ? ` - ${formaPagamentoSelecionada}` : '';
+            let msg = `*Orçamento Itall Comércio*%0A*Cliente:* ${cliente}%0A*Tabela:* ${tabelaInfo || 'Padrão'}%0A*Forma de Pagamento:* ${formaPagInfo || 'Não informada'}%0A%0A*Itens:*%0A`;
             Object.keys(carrinho).forEach(id => {
                 const p = produtos.find(prod => prod.id == id);
                 const precoAtual = getPrecoAtual(p);
