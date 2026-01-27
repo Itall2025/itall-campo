@@ -178,13 +178,14 @@ app.post('/api/estoque', async (req, res) => {
 app.post('/api/clientes', async (req, res) => {
     try {
         const { buscar } = req.body;
-        const termo = (buscar || '').toLowerCase();
+        const termo = (buscar || '').toLowerCase().trim();
+        
+        console.log(`👥 Buscando clientes com termo: "${buscar}" (limpo: "${termo}", length: ${termo.length})`);
         
         if (termo.length < 2) {
+            console.log(`  ⚠️ Termo muito curto (< 2 caracteres), retornando vazio`);
             return res.json({ clientes: [] });
         }
-        
-        console.log(`👥 Buscando clientes com termo: "${buscar}"...`);
         
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 30000);
@@ -213,8 +214,7 @@ app.post('/api/clientes', async (req, res) => {
         const data = await response.json();
         console.log(`  → Response Omie:`, {
             tem_clientes: !!data.clientes_cadastro,
-            total: data.clientes_cadastro?.length || 0,
-            chaves: Object.keys(data).slice(0, 5)
+            total: data.clientes_cadastro?.length || 0
         });
         
         let clientesRetorno = [];
@@ -223,15 +223,29 @@ app.post('/api/clientes', async (req, res) => {
             console.log(`  ✅ ${data.clientes_cadastro.length} clientes retornados da API Omie`);
             
             // Filtrar localmente por termo de busca
-            clientesRetorno = data.clientes_cadastro
-                .filter(c => {
-                    const razao = (c.razao_social || '').toLowerCase();
-                    const fantasia = (c.nome_fantasia || '').toLowerCase();
-                    const cnpj = (c.cnpj_cpf || '').toLowerCase().replace(/\D/g, '');
-                    const termoLimpo = termo.toLowerCase().replace(/\D/g, '');
-                    
-                    return razao.includes(termo) || fantasia.includes(termo) || cnpj.includes(termoLimpo);
-                })
+            const clientesFiltrados = data.clientes_cadastro.filter(c => {
+                const razao = (c.razao_social || '').toLowerCase().trim();
+                const fantasia = (c.nome_fantasia || '').toLowerCase().trim();
+                const cnpj = (c.cnpj_cpf || '').replace(/\D/g, '');
+                
+                // Filtro: termo deve estar contido em razão social, nome fantasia ou CNPJ
+                const match = razao.includes(termo) || fantasia.includes(termo) || cnpj.includes(termo.replace(/\D/g, ''));
+                
+                return match;
+            });
+            
+            console.log(`  🔍 Após filtro local: ${clientesFiltrados.length} clientes encontrados`);
+            
+            if (clientesFiltrados.length > 0) {
+                // Debug: mostrar alguns resultados
+                console.log(`  → Primeiros 3 resultados:`, clientesFiltrados.slice(0, 3).map(c => ({
+                    razao: c.razao_social,
+                    fantasia: c.nome_fantasia,
+                    cnpj: c.cnpj_cpf
+                })));
+            }
+            
+            clientesRetorno = clientesFiltrados
                 .slice(0, 20) // Limitar a 20 resultados
                 .map(c => ({
                     nCodCliente: c.codigo_cliente_omie,
@@ -242,9 +256,9 @@ app.post('/api/clientes', async (req, res) => {
                     cCondPagtoDesc: c.recomendacoes?.numero_parcelas ? `${c.recomendacoes.numero_parcelas}x` : 'Padrão'
                 }));
                 
-            console.log(`  ✅ ${clientesRetorno.length} clientes após filtro local`);
+            console.log(`  ✅ ${clientesRetorno.length} clientes retornados ao frontend`);
         } else {
-            console.log(`  ⚠️ Response da API não contém 'clientes_cadastro'. Chaves disponíveis: ${Object.keys(data).join(', ')}`);
+            console.log(`  ⚠️ Response da API não contém 'clientes_cadastro'. Chaves: ${Object.keys(data).join(', ')}`);
         }
         
         res.json({ clientes: clientesRetorno });
