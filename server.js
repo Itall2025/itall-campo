@@ -137,15 +137,16 @@ app.post('/api/estoque', async (req, res) => {
         // Juntar estoque com imagens
         const produtosCompletos = todosOsProdutos.map(p => ({
             ...p,
-            url_imagem: mapaImagens[p.cCodigo] || null
+            url_imagem: mapaImagens[p.nCodProd] || null
         }));
         
         // Debug: mostrar exemplo de estoque
         if (todosOsProdutos.length > 0) {
             console.log('  → Exemplo estoque:', {
+                nCodProd: todosOsProdutos[0].nCodProd,
                 cCodigo: todosOsProdutos[0].cCodigo,
                 cDescricao: todosOsProdutos[0].cDescricao,
-                url_imagem: mapaImagens[todosOsProdutos[0].cCodigo] || 'NÃO MAPEADO'
+                url_imagem: mapaImagens[todosOsProdutos[0].nCodProd] || 'NÃO MAPEADO'
             });
         }
         
