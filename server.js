@@ -174,6 +174,59 @@ app.post('/api/estoque', async (req, res) => {
     }
 });
 
+// Endpoint para buscar clientes do Omie
+app.post('/api/clientes', async (req, res) => {
+    try {
+        const { buscar } = req.body;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        
+        console.log(`👥 Buscando clientes: ${buscar}...`);
+        
+        const response = await fetch("https://app.omie.com.br/api/v1/geral/clientes/", {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0'
+            },
+            signal: controller.signal,
+            body: JSON.stringify({
+                "call": "ListarClientes",
+                "app_key": CONFIG.key,
+                "app_secret": CONFIG.secret,
+                "param": [{
+                    "pagina": 1,
+                    "registros_por_pagina": 50,
+                    "pesquisa": buscar || ""
+                }]
+            })
+        });
+        clearTimeout(timeout);
+        
+        const data = await response.json();
+        
+        if (data.clientes && Array.isArray(data.clientes)) {
+            console.log(`  ✅ ${data.clientes.length} clientes encontrados`);
+            res.json({ 
+                clientes: data.clientes.map(c => ({
+                    nCodCliente: c.nCodCliente,
+                    cNomeFantasia: c.cNomeFantasia,
+                    cRazaoSocial: c.cRazaoSocial,
+                    cCNPJ: c.cCNPJ,
+                    cCondPagto: c.cCondPagto || '',
+                    cCondPagtoDesc: c.cCondPagtoDesc || ''
+                }))
+            });
+        } else {
+            console.log('  ⚠️ Nenhum cliente encontrado');
+            res.json({ clientes: [] });
+        }
+    } catch (error) {
+        console.error('❌ Erro ao buscar clientes:', error.message);
+        res.status(500).json({ erro: error.message, clientes: [] });
+    }
+});
+
 // Endpoint para listar formas de pagamento
 app.post('/api/formas-pagamento', async (req, res) => {
     try {
