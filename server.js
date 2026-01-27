@@ -178,12 +178,18 @@ app.post('/api/estoque', async (req, res) => {
 app.post('/api/clientes', async (req, res) => {
     try {
         const { buscar } = req.body;
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000);
+        const termo = (buscar || '').toLowerCase();
+        
+        if (termo.length < 2) {
+            return res.json({ clientes: [] });
+        }
         
         console.log(`👥 Buscando clientes com termo: "${buscar}"...`);
         
-        // Buscar clientes - tentar com clientesFiltro primeiro
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        
+        // Listar clientes e filtrar localmente (mesmo que com CNPJ)
         const response = await fetch("https://app.omie.com.br/api/v1/geral/clientes/", {
             method: 'POST',
             headers: { 
@@ -197,34 +203,34 @@ app.post('/api/clientes', async (req, res) => {
                 "app_secret": CONFIG.secret,
                 "param": [{
                     "pagina": 1,
-                    "registros_por_pagina": 100,
-                    "apenas_importado_api": "N",
-                    "clientesFiltro": {
-                        "razao_social": buscar || "",
-                        "nome_fantasia": buscar || "",
-                        "cnpj_cpf": buscar || ""
-                    }
+                    "registros_por_pagina": 500,
+                    "apenas_importado_api": "N"
                 }]
             })
         });
         clearTimeout(timeout);
         
         const data = await response.json();
-        console.log(`  → Response Omie:`, JSON.stringify(data).substring(0, 300));
+        console.log(`  → Response Omie:`, {
+            tem_clientes: !!data.clientes_cadastro,
+            total: data.clientes_cadastro?.length || 0,
+            chaves: Object.keys(data).slice(0, 5)
+        });
         
         let clientesRetorno = [];
         
         if (data.clientes_cadastro && Array.isArray(data.clientes_cadastro)) {
-            console.log(`  ✅ ${data.clientes_cadastro.length} clientes retornados pela API Omie`);
+            console.log(`  ✅ ${data.clientes_cadastro.length} clientes retornados da API Omie`);
             
+            // Filtrar localmente por termo de busca
             clientesRetorno = data.clientes_cadastro
-                // Filtrar localmente por segurança
                 .filter(c => {
                     const razao = (c.razao_social || '').toLowerCase();
                     const fantasia = (c.nome_fantasia || '').toLowerCase();
-                    const cnpj = (c.cnpj_cpf || '').toLowerCase();
-                    const termo = (buscar || '').toLowerCase();
-                    return razao.includes(termo) || fantasia.includes(termo) || cnpj.includes(termo);
+                    const cnpj = (c.cnpj_cpf || '').toLowerCase().replace(/\D/g, '');
+                    const termoLimpo = termo.toLowerCase().replace(/\D/g, '');
+                    
+                    return razao.includes(termo) || fantasia.includes(termo) || cnpj.includes(termoLimpo);
                 })
                 .slice(0, 20) // Limitar a 20 resultados
                 .map(c => ({
