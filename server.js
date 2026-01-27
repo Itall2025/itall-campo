@@ -221,13 +221,35 @@ app.post('/api/clientes', async (req, res) => {
         
         if (data.clientes_cadastro && Array.isArray(data.clientes_cadastro)) {
             // APLICAR FILTRO LOCALMENTE
+            console.log(`  🔍 Aplicando filtro com termo: "${termo}"`);
+            console.log(`  → Exemplo de cliente antes do filtro:`, {
+                razao: data.clientes_cadastro[0]?.razao_social,
+                fantasia: data.clientes_cadastro[0]?.nome_fantasia,
+                cnpj: data.clientes_cadastro[0]?.cnpj_cpf
+            });
+            
             const clientesFiltrados = data.clientes_cadastro.filter(c => {
                 const razao = (c.razao_social || '').toLowerCase().trim();
                 const fantasia = (c.nome_fantasia || '').toLowerCase().trim();
                 const cnpj = (c.cnpj_cpf || '').replace(/\D/g, '');
+                const termoLimpo = termo.replace(/\D/g, '');
                 
                 // Verificar se o termo está em algum desses campos
-                const match = razao.includes(termo) || fantasia.includes(termo) || cnpj.includes(termo.replace(/\D/g, ''));
+                const matchRazao = razao.includes(termo);
+                const matchFantasia = fantasia.includes(termo);
+                const matchCNPJ = cnpj.includes(termoLimpo);
+                const match = matchRazao || matchFantasia || matchCNPJ;
+                
+                // Debug: log do primeiro cliente que bater
+                if (match && clientesFiltrados.length === 0) {
+                    console.log(`  ✅ PRIMEIRO MATCH:`, {
+                        razao: c.razao_social,
+                        fantasia: c.nome_fantasia,
+                        matchRazao,
+                        matchFantasia,
+                        matchCNPJ
+                    });
+                }
                 
                 return match;
             });
