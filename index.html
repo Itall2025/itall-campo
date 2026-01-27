@@ -287,9 +287,17 @@
                     if (!res.ok) throw new Error(`Erro HTTP: ${res.status}`);
                     
                     const data = await res.json();
-                    console.log(`  → Resposta do servidor:`, data);
+                    console.log(`  → Resposta completa do servidor:`, JSON.stringify(data, null, 2));
+                    console.log(`  → Total de clientes retornados: ${data.clientes?.length || 0}`);
                     
                     if (data.clientes && data.clientes.length > 0) {
+                        // Debug: mostrar nomes dos clientes
+                        console.log(`  → Primeiros 3 clientes retornados:`, data.clientes.slice(0, 3).map(c => ({
+                            razao: c.cRazaoSocial,
+                            fantasia: c.cNomeFantasia,
+                            cnpj: c.cCNPJ
+                        })));
+                        
                         listaDiv.innerHTML = '';
                         data.clientes.forEach(cliente => {
                             const div = document.createElement('div');
