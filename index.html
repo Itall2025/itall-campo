@@ -349,14 +349,53 @@
         });
 
         async function buscarCNPJ() {
-            const cnpj = document.getElementById('cnpj-input').value;
+            const cnpj = document.getElementById('cnpj-input').value.replace(/\D/g, ''); // Remove caracteres não-numéricos
+            
+            if (!cnpj || cnpj.length < 11) {
+                alert('Por favor, informe um CNPJ válido com 11+ dígitos.');
+                return;
+            }
+            
             try {
+                console.log(`🔎 Buscando cliente com CNPJ: ${cnpj}`);
+                
                 const res = await fetch(`/api/cnpj/${cnpj}`);
+                
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+                
                 const data = await res.json();
-                document.getElementById('razao-social').value = data.estabelecimento?.razao_social || data.razao_social || "Não encontrado";
+                console.log(`  → Resposta do servidor:`, data);
+                
+                if (data.sucesso && data.cliente) {
+                    const cliente = data.cliente;
+                    document.getElementById('razao-social').value = cliente.razao_social || cliente.nome_fantasia || '';
+                    document.getElementById('cnpj-input').value = cliente.cnpj_cpf || '';
+                    
+                    // Preencher forma de pagamento se disponível
+                    if (cliente.recomendacoes?.numero_parcelas) {
+                        const selectFormaPag = document.getElementById('forma-pagamento');
+                        const parcelas = cliente.recomendacoes.numero_parcelas;
+                        const options = Array.from(selectFormaPag.options);
+                        const optionCliente = options.find(opt => opt.textContent.includes(parcelas + 'x') || opt.textContent.includes(parcelas));
+                        if (optionCliente) {
+                            selectFormaPag.value = optionCliente.value;
+                            mudarFormaPagamento();
+                            console.log(`✅ Forma de pagamento preenchida: ${parcelas}x`);
+                        }
+                    }
+                    
+                    console.log(`✅ Cliente carregado com sucesso: ${cliente.razao_social}`);
+                    alert(`Cliente encontrado: ${cliente.razao_social}`);
+                } else {
+                    console.log('  ℹ️ Cliente não encontrado com esse CNPJ');
+                    alert('Cliente não encontrado com este CNPJ. Verifique e tente novamente.');
+                    document.getElementById('razao-social').value = '';
+                }
             } catch (e) { 
-                console.error('Erro ao buscar CNPJ:', e);
-                alert("Erro ao buscar CNPJ. Verifique a conexão.");
+                console.error('❌ Erro ao buscar CNPJ:', e);
+                alert("Erro ao buscar CNPJ. Verifique se o número está correto ou tente novamente.");
             }
         }
 

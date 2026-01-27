@@ -400,6 +400,73 @@ app.post('/api/tabela-precos/:id', async (req, res) => {
     }
 });
 
+// Endpoint para buscar cliente por CNPJ
+app.get('/api/cnpj/:cnpj', async (req, res) => {
+    try {
+        const { cnpj } = req.params;
+        
+        if (!cnpj || cnpj.length < 11) {
+            return res.status(400).json({ erro: 'CNPJ inválido', clientes: [] });
+        }
+        
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        
+        console.log(`🔎 Buscando cliente por CNPJ: ${cnpj}...`);
+        
+        // Buscar cliente por CNPJ usando o endpoint de clientes
+        const response = await fetch("https://app.omie.com.br/api/v1/geral/clientes/", {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0'
+            },
+            signal: controller.signal,
+            body: JSON.stringify({
+                "call": "ListarClientes",
+                "app_key": CONFIG.key,
+                "app_secret": CONFIG.secret,
+                "param": [{
+                    "pagina": 1,
+                    "registros_por_pagina": 10,
+                    "apenas_importado_api": "N",
+                    "clientesFiltro": {
+                        "cnpj_cpf": cnpj
+                    }
+                }]
+            })
+        });
+        clearTimeout(timeout);
+        
+        const data = await response.json();
+        
+        if (data.clientes_cadastro && Array.isArray(data.clientes_cadastro) && data.clientes_cadastro.length > 0) {
+            const cliente = data.clientes_cadastro[0]; // Pegar primeiro resultado
+            console.log(`  ✅ Cliente encontrado: ${cliente.razao_social}`);
+            res.json({
+                sucesso: true,
+                cliente: {
+                    razao_social: cliente.razao_social,
+                    nome_fantasia: cliente.nome_fantasia,
+                    cnpj_cpf: cliente.cnpj_cpf,
+                    codigo_cliente_omie: cliente.codigo_cliente_omie,
+                    recomendacoes: cliente.recomendacoes
+                }
+            });
+        } else {
+            console.log(`  ⚠️ Cliente não encontrado com CNPJ: ${cnpj}`);
+            res.json({ 
+                sucesso: false, 
+                mensagem: 'Cliente não encontrado',
+                cliente: null 
+            });
+        }
+    } catch (error) {
+        console.error('❌ Erro ao buscar cliente por CNPJ:', error.message);
+        res.status(500).json({ erro: error.message, sucesso: false });
+    }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
