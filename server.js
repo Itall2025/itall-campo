@@ -258,7 +258,16 @@ app.post('/api/clientes', async (req, res) => {
             console.log(`  ⚠️ Resposta inválida da API\n`);
         }
         
-        res.json({ clientes: clientesRetorno });
+        res.json({ 
+            clientes: clientesRetorno,
+            debug: {
+                termo_buscado: termo,
+                total_api: data.clientes_cadastro?.length || 0,
+                total_filtrados: clientesRetorno.length,
+                timestamp: new Date().toISOString(),
+                versao: '2.0'
+            }
+        });
     } catch (error) {
         console.error('❌ Erro ao buscar clientes:', error.message);
         res.status(500).json({ erro: error.message, clientes: [] });

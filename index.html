@@ -292,6 +292,11 @@
                     const data = await res.json();
                     console.log(`  → Total de clientes retornados: ${data.clientes?.length || 0}`);
                     
+                    // Mostrar debug info do servidor
+                    if (data.debug) {
+                        console.log(`  📊 DEBUG DO SERVIDOR:`, data.debug);
+                    }
+                    
                     // Log super detalhado
                     if (data.clientes && data.clientes.length > 0) {
                         console.log(`  → Cliente 1:`, data.clientes[0]);
