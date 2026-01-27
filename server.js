@@ -112,7 +112,8 @@ app.post('/api/estoque', async (req, res) => {
                     codigo_produto: primeiroProd.codigo_produto,
                     codigo_produto_integracao: primeiroProd.codigo_produto_integracao,
                     descricao: primeiroProd.descricao,
-                    tem_imagem: primeiroProd.imagens?.length > 0
+                    tem_imagem: primeiroProd.imagens?.length > 0,
+                    imagem_url: primeiroProd.imagens?.[0]?.url_imagem
                 });
                 
                 dataProd.produto_servico_cadastro.forEach(p => {
@@ -125,6 +126,7 @@ app.post('/api/estoque', async (req, res) => {
                     }
                 });
                 console.log(`  ✅ ${Object.keys(mapaImagens).length} mapeamentos de imagens criados`);
+                console.log(`  🔍 Primeiras 5 chaves do mapa:`, Object.keys(mapaImagens).slice(0, 5));
             } else {
                 console.log('  ⚠️ API de produtos retornou vazio');
             }
