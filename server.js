@@ -174,6 +174,110 @@ app.post('/api/estoque', async (req, res) => {
     }
 });
 
+// Endpoint para listar tabelas de preços
+app.post('/api/tabelas-precos', async (req, res) => {
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        
+        console.log('📊 Buscando tabelas de preços...');
+        
+        const response = await fetch("https://app.omie.com.br/api/v1/produtos/tabelaprecos/", {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0'
+            },
+            signal: controller.signal,
+            body: JSON.stringify({
+                "call": "ListarTabelasPreco",
+                "app_key": CONFIG.key,
+                "app_secret": CONFIG.secret,
+                "param": [{
+                    "nPagina": 1,
+                    "nRegPorPagina": 100
+                }]
+            })
+        });
+        clearTimeout(timeout);
+        
+        const data = await response.json();
+        
+        if (data.listaTabelasPreco && Array.isArray(data.listaTabelasPreco)) {
+            console.log(`  ✅ ${data.listaTabelasPreco.length} tabelas encontradas`);
+            res.json({ 
+                tabelas: data.listaTabelasPreco.map(t => ({
+                    id: t.nCodTabPreco,
+                    nome: t.cNome,
+                    codigo: t.cCodigo,
+                    ativa: t.cAtiva === 'S'
+                }))
+            });
+        } else {
+            console.log('  ⚠️ Nenhuma tabela encontrada');
+            res.json({ tabelas: [] });
+        }
+    } catch (error) {
+        console.error('❌ Erro ao buscar tabelas:', error.message);
+        res.status(500).json({ erro: error.message, tabelas: [] });
+    }
+});
+
+// Endpoint para buscar itens de uma tabela de preços específica
+app.post('/api/tabela-precos/:id', async (req, res) => {
+    try {
+        const nCodTabPreco = parseInt(req.params.id);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        
+        console.log(`📊 Buscando itens da tabela ${nCodTabPreco}...`);
+        
+        const response = await fetch("https://app.omie.com.br/api/v1/produtos/tabelaprecos/", {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0'
+            },
+            signal: controller.signal,
+            body: JSON.stringify({
+                "call": "ListarTabelaItens",
+                "app_key": CONFIG.key,
+                "app_secret": CONFIG.secret,
+                "param": [{
+                    "nCodTabPreco": nCodTabPreco,
+                    "nPagina": 1,
+                    "nRegPorPagina": 500
+                }]
+            })
+        });
+        clearTimeout(timeout);
+        
+        const data = await response.json();
+        
+        if (data.listaTabelaPreco && data.listaTabelaPreco.itensTabela) {
+            const itens = data.listaTabelaPreco.itensTabela;
+            console.log(`  ✅ ${itens.length} itens encontrados`);
+            
+            // Mapear preços por código do produto
+            const mapaPrecos = {};
+            itens.forEach(item => {
+                mapaPrecos[item.nCodProd] = item.nValorTabela;
+            });
+            
+            res.json({ 
+                nomeTabela: data.listaTabelaPreco.cNome,
+                precos: mapaPrecos
+            });
+        } else {
+            console.log('  ⚠️ Nenhum item encontrado na tabela');
+            res.json({ precos: {} });
+        }
+    } catch (error) {
+        console.error('❌ Erro ao buscar itens da tabela:', error.message);
+        res.status(500).json({ erro: error.message, precos: {} });
+    }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
