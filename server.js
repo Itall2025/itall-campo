@@ -210,138 +210,69 @@ app.post('/api/clientes', async (req, res) => {
             });
         } catch (error) {
             console.error('❌ Erro ao buscar clientes:', error.message);
-            res.status(500).json({ erro: error.message, clientes: [] });
-        }
-        
-        const response = await fetch("https://app.omie.com.br/api/v1/produtos/tabelaprecos/", {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'User-Agent': 'Mozilla/5.0'
-            },
-            signal: controller.signal,
-            body: JSON.stringify({
-                "call": "ListarTabelasPreco",
-                "app_key": CONFIG.key,
-                "app_secret": CONFIG.secret,
-                "param": [{
-                    "nPagina": 1,
-                    "nRegPorPagina": 100
-                }]
-            })
-        });
-        clearTimeout(timeout);
-        
-        const data = await response.json();
-        
-        if (data.listaTabelasPreco && Array.isArray(data.listaTabelasPreco)) {
-            console.log(`  ✅ ${data.listaTabelasPreco.length} tabelas encontradas`);
-            res.json({ 
-                tabelas: data.listaTabelasPreco.map(t => ({
-                    id: t.nCodTabPreco,
-                    nome: t.cNome,
-                    codigo: t.cCodigo,
-                    ativa: t.cAtiva === 'S'
-                }))
-            });
-        } else {
-            console.log('  ⚠️ Nenhuma tabela encontrada');
-            res.json({ tabelas: [] });
-        }
-    } catch (error) {
-        console.error('❌ Erro ao buscar tabelas:', error.message);
-        res.status(500).json({ erro: error.message, tabelas: [] });
-    }
-});
-
-// Endpoint para buscar itens de uma tabela de preços específica
-app.post('/api/tabela-precos/:id', async (req, res) => {
-    try {
-        const nCodTabPreco = parseInt(req.params.id);
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000);
-        
-        console.log(`📊 Buscando itens da tabela ${nCodTabPreco}...`);
-        
-        const response = await fetch("https://app.omie.com.br/api/v1/produtos/tabelaprecos/", {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'User-Agent': 'Mozilla/5.0'
-            },
-            signal: controller.signal,
-            body: JSON.stringify({
-                "call": "ListarTabelaItens",
-                "app_key": CONFIG.key,
-                "app_secret": CONFIG.secret,
-                "param": [{
-                    "nCodTabPreco": nCodTabPreco,
-                    "nPagina": 1,
-                    "nRegPorPagina": 500
-                }]
-            })
-        });
-        clearTimeout(timeout);
-        
-        const data = await response.json();
-        
-        if (data.listaTabelaPreco && data.listaTabelaPreco.itensTabela) {
-            const itens = data.listaTabelaPreco.itensTabela;
-            console.log(`  ✅ ${itens.length} itens encontrados`);
-            
-            // Mapear preços por código do produto
-            const mapaPrecos = {};
-            itens.forEach(item => {
-                mapaPrecos[item.nCodProd] = item.nValorTabela;
-            });
-            
-            res.json({ 
-                nomeTabela: data.listaTabelaPreco.cNome,
-                precos: mapaPrecos
-            });
-        } else {
-            console.log('  ⚠️ Nenhum item encontrado na tabela');
-            res.json({ precos: {} });
-        }
-    } catch (error) {
-        console.error('❌ Erro ao buscar itens da tabela:', error.message);
-        res.status(500).json({ erro: error.message, precos: {} });
-    }
-});
-
-// Endpoint para buscar cliente por CNPJ
-app.get('/api/cnpj/:cnpj', async (req, res) => {
-    try {
-        const { cnpj } = req.params;
-        
-        if (!cnpj || cnpj.length < 11) {
-            return res.status(400).json({ erro: 'CNPJ inválido', clientes: [] });
-        }
-        
-        console.log(`🔎 Buscando cliente por CNPJ: ${cnpj}...`);
-        
-        // Primeiro tenta buscar no OMIE
-        let cliente = await buscarClienteOmie(cnpj);
-        
-        if (cliente) {
-            console.log(`  ✅ Cliente encontrado NO OMIE: ${cliente.razao_social}`);
-            return res.json({
-                sucesso: true,
-                origem: 'OMIE',
-                cliente: cliente
-            });
-        }
-        
-        console.log(`  ⚠️ Cliente não encontrado no OMIE, tentando API pública...`);
-        
-        // Fallback: tenta API pública de CNPJ
-        cliente = await buscarClienteAPIPublica(cnpj);
-        
-        if (cliente) {
-            console.log(`  ✅ Cliente encontrado em API PÚBLICA: ${cliente.razao_social}`);
-            return res.json({
-                sucesso: true,
-                origem: 'API_PUBLICA',
+            // Endpoint para buscar clientes do Omie
+            app.post('/api/clientes', async (req, res) => {
+                try {
+                    const { buscar } = req.body;
+                    const termo = (buscar || '').trim();
+                    console.log(`\n👥 BUSCA DE CLIENTES`);
+                    console.log(`  Termo recebido: "${buscar}"`);
+                    if (termo.length < 2) {
+                        console.log(`  ⚠️ Termo muito curto (< 2), retornando vazio`);
+                        return res.json({ clientes: [] });
+                    }
+                    const controller = new AbortController();
+                    const timeout = setTimeout(() => controller.abort(), 30000);
+                    // Busca dinâmica usando filtro direto na OMIE
+                    const response = await fetch("https://app.omie.com.br/api/v1/geral/clientes/", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'User-Agent': 'Mozilla/5.0'
+                        },
+                        signal: controller.signal,
+                        body: JSON.stringify({
+                            "call": "ListarClientes",
+                            "app_key": CONFIG.key,
+                            "app_secret": CONFIG.secret,
+                            "param": [{
+                                "pagina": 1,
+                                "registros_por_pagina": 100,
+                                "apenas_importado_api": "N",
+                                "clientesFiltro": {
+                                    "razao_social": termo,
+                                    "nome_fantasia": termo,
+                                    "cnpj_cpf": termo
+                                }
+                            }]
+                        })
+                    });
+                    clearTimeout(timeout);
+                    const data = await response.json();
+                    const clientesOmie = data.clientes_cadastro || [];
+                    console.log(`  ✅ API retornou ${clientesOmie.length} clientes filtrados`);
+                    const clientesRetorno = clientesOmie.map(c => ({
+                        nCodCliente: c.codigo_cliente_omie,
+                        cNomeFantasia: c.nome_fantasia || '',
+                        cRazaoSocial: c.razao_social || '',
+                        cCNPJ: c.cnpj_cpf || '',
+                        cCondPagto: c.recomendacoes?.numero_parcelas || '',
+                        cCondPagtoDesc: c.recomendacoes?.numero_parcelas ? `${c.recomendacoes.numero_parcelas}x` : 'Padrão'
+                    }));
+                    res.json({
+                        clientes: clientesRetorno,
+                        debug: {
+                            termo_buscado: termo,
+                            total_api: clientesOmie.length,
+                            total_filtrados: clientesRetorno.length,
+                            timestamp: new Date().toISOString(),
+                            versao: '3.0-filtro-omie'
+                        }
+                    });
+                } catch (error) {
+                    console.error('❌ Erro ao buscar clientes:', error.message);
+                    res.status(500).json({ erro: error.message, clientes: [] });
+                }
                 cliente: cliente
             });
         }
