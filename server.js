@@ -25,103 +25,62 @@ app.get('/api/test', (req, res) => {
 // Endpoint para sincronizar estoque COM CACHE - BUSCA TODAS AS PÁGINAS + IMAGENS
 app.post('/api/estoque', async (req, res) => {
     try {
-        // Se tem cache e ainda é válido, retornar
-        if (cacheEstoque && (Date.now() - cacheTime) < CACHE_DURATION) {
-            console.log('📦 Retornando estoque do cache -', cacheEstoque.produtos?.length || 0, 'produtos');
-            return res.json(cacheEstoque);
+        const termo = (buscar || '').trim();
+        console.log(`\n👥 BUSCA DE CLIENTES`);
+        console.log(`  Termo recebido: "${buscar}"`);
+        if (termo.length < 2) {
+            console.log(`  ⚠️ Termo muito curto (< 2), retornando vazio`);
+            return res.json({ clientes: [] });
         }
-        
-        const hoje = new Date().toLocaleDateString('pt-BR');
-        console.log('📦 Buscando TODOS os produtos do estoque...');
-        
-        let todosOsProdutos = [];
-        let paginaAtual = 1;
-        let totalPaginas = 1;
-        
-        // Buscar todas as páginas de ESTOQUE
-        while (paginaAtual <= totalPaginas) {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 30000);
-            
-            console.log(`  → Buscando estoque página ${paginaAtual}...`);
-            
-            const response = await fetch("https://app.omie.com.br/api/v1/estoque/consulta/", {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'Mozilla/5.0'
-                },
-                signal: controller.signal,
-                body: JSON.stringify({
-                    "call": "ListarPosEstoque",
-                    "app_key": CONFIG.key,
-                    "app_secret": CONFIG.secret,
-                    "param": [{"nPagina": paginaAtual, "nRegPorPagina": 500, "dDataPosicao": hoje, "cExibeTodos": "S", "codigo_local_estoque": 0}]
-                })
-            });
-            clearTimeout(timeout);
-            
-            const data = await response.json();
-            console.log(`  → Resposta página ${paginaAtual}:`, JSON.stringify(data).substring(0, 500));
-            totalPaginas = data.nTotPaginas || 1;
-            
-            if (data.produtos) {
-                todosOsProdutos = todosOsProdutos.concat(data.produtos);
-                console.log(`  ✅ Estoque página ${paginaAtual}/${totalPaginas}: ${data.produtos.length} produtos`);
-            } else {
-                console.log(`  ⚠️ Resposta da página ${paginaAtual} não contém 'produtos'`);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        // Busca dinâmica usando filtro direto na OMIE
+        const response = await fetch("https://app.omie.com.br/api/v1/geral/clientes/", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0'
+            },
+            signal: controller.signal,
+            body: JSON.stringify({
+                "call": "ListarClientes",
+                "app_key": CONFIG.key,
+                "app_secret": CONFIG.secret,
+                "param": [{
+                    "pagina": 1,
+                    "registros_por_pagina": 100,
+                    "apenas_importado_api": "N",
+                    "clientesFiltro": {
+                        "razao_social": termo,
+                        "nome_fantasia": termo,
+                        "cnpj_cpf": termo
+                    }
+                }]
+            })
+        });
+        clearTimeout(timeout);
+        const data = await response.json();
+        const clientesOmie = data.clientes_cadastro || [];
+        console.log(`  ✅ API retornou ${clientesOmie.length} clientes filtrados`);
+        const clientesRetorno = clientesOmie.map(c => ({
+            nCodCliente: c.codigo_cliente_omie,
+            cNomeFantasia: c.nome_fantasia || '',
+            cRazaoSocial: c.razao_social || '',
+            cCNPJ: c.cnpj_cpf || '',
+            cCondPagto: c.recomendacoes?.numero_parcelas || '',
+            cCondPagtoDesc: c.recomendacoes?.numero_parcelas ? `${c.recomendacoes.numero_parcelas}x` : 'Padrão'
+        }));
+        res.json({
+            clientes: clientesRetorno,
+            debug: {
+                termo_buscado: termo,
+                total_api: clientesOmie.length,
+                total_filtrados: clientesRetorno.length,
+                timestamp: new Date().toISOString(),
+                versao: '3.0-filtro-omie'
             }
-            
-            paginaAtual++;
-        }
-        
-        // Buscar produtos com imagens - TENTATIVA COM PARÂMETROS DIFERENTES
-        console.log('📸 Tentando buscar imagens dos produtos...');
-        let mapaImagens = {};
-        
-        try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 30000);
-            
-            const response = await fetch("https://app.omie.com.br/api/v1/geral/produtos/", {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'Mozilla/5.0'
-                },
-                signal: controller.signal,
-                body: JSON.stringify({
-                    "call": "ListarProdutos",
-                    "app_key": CONFIG.key,
-                    "app_secret": CONFIG.secret,
-                    "param": [{
-                        "pagina": 1,
-                        "registros_por_pagina": 500,
-                        "apenas_importado_api": "N",
-                        "filtrar_apenas_omiepdv": "N"
-                    }]
-                })
-            });
-            clearTimeout(timeout);
-            
-            const dataProd = await response.json();
-            console.log('  → Resposta API produtos:', JSON.stringify(dataProd).substring(0, 300));
-            
-            if (dataProd.produto_servico_cadastro && dataProd.produto_servico_cadastro.length > 0) {
-                // Debug: mostrar primeiro produto
-                const primeiroProd = dataProd.produto_servico_cadastro[0];
-                console.log('  → Exemplo produto API:', {
-                    codigo_produto: primeiroProd.codigo_produto,
-                    codigo_produto_integracao: primeiroProd.codigo_produto_integracao,
-                    descricao: primeiroProd.descricao,
-                    tem_imagem: primeiroProd.imagens?.length > 0,
-                    imagem_url: primeiroProd.imagens?.[0]?.url_imagem
-                });
-                
-                dataProd.produto_servico_cadastro.forEach(p => {
-                    if (p.imagens && p.imagens.length > 0) {
-                        // Mapear tanto por codigo_produto quanto por codigo_produto_integracao
-                        mapaImagens[p.codigo_produto] = p.imagens[0].url_imagem;
+        });
+        return;
                         if (p.codigo_produto_integracao) {
                             mapaImagens[p.codigo_produto_integracao] = p.imagens[0].url_imagem;
                         }
@@ -192,50 +151,18 @@ app.post('/api/clientes', async (req, res) => {
         const termo = normalizar(buscar);
         
         console.log(`\n👥 BUSCA DE CLIENTES`);
-        console.log(`  Termo recebido: "${buscar}"`);
-        console.log(`  Termo limpo: "${termo}" (length: ${termo.length})`);
-        
-        if (termo.length < 2) {
-            console.log(`  ⚠️ Termo muito curto (< 2), retornando vazio`);
-            return res.json({ clientes: [] });
-        }
-        
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000);
-        
-        // Listar clientes da OMIE
-        console.log(`  📡 Buscando clientes da API OMIE...`);
-        const response = await fetch("https://app.omie.com.br/api/v1/geral/clientes/", {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'User-Agent': 'Mozilla/5.0'
-            },
-            signal: controller.signal,
-            body: JSON.stringify({
-                "call": "ListarClientes",
-                "app_key": CONFIG.key,
-                "app_secret": CONFIG.secret,
-                "param": [{
-                    "pagina": 1,
-                    "registros_por_pagina": 500,
-                    "apenas_importado_api": "N"
-                }]
-            })
-        });
-        clearTimeout(timeout);
-        
-        const data = await response.json();
-        console.log(`  ✅ API retornou ${data.clientes_cadastro?.length || 0} clientes`);
-        
-        // Busca paginada de clientes OMIE
-        let pagina = 1;
-        let clientesOmie = [];
-        let totalPaginas = 1;
-        const registrosPorPagina = 500;
-        do {
+        try {
+            const { buscar } = req.body;
+            const termo = (buscar || '').trim();
+            console.log(`\n👥 BUSCA DE CLIENTES`);
+            console.log(`  Termo recebido: "${buscar}"`);
+            if (termo.length < 2) {
+                console.log(`  ⚠️ Termo muito curto (< 2), retornando vazio`);
+                return res.json({ clientes: [] });
+            }
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 30000);
+            // Busca dinâmica usando filtro direto na OMIE
             const response = await fetch("https://app.omie.com.br/api/v1/geral/clientes/", {
                 method: 'POST',
                 headers: {
@@ -248,45 +175,22 @@ app.post('/api/clientes', async (req, res) => {
                     "app_key": CONFIG.key,
                     "app_secret": CONFIG.secret,
                     "param": [{
-                        "pagina": pagina,
-                        "registros_por_pagina": registrosPorPagina,
-                        "apenas_importado_api": "N"
+                        "pagina": 1,
+                        "registros_por_pagina": 100,
+                        "apenas_importado_api": "N",
+                        "clientesFiltro": {
+                            "razao_social": termo,
+                            "nome_fantasia": termo,
+                            "cnpj_cpf": termo
+                        }
                     }]
                 })
             });
             clearTimeout(timeout);
             const data = await response.json();
-            if (data.clientes_cadastro && Array.isArray(data.clientes_cadastro)) {
-                clientesOmie = clientesOmie.concat(data.clientes_cadastro);
-            }
-            totalPaginas = data.total_de_paginas || 1;
-            pagina++;
-        } while (pagina <= totalPaginas);
-
-        console.log(`  ✅ API retornou ${clientesOmie.length} clientes no total`);
-        // APLICAR FILTRO LOCALMENTE
-        const resultadosFiltro = [];
-        for (const c of clientesOmie) {
-            const razao = normalizar(c.razao_social);
-            const fantasia = normalizar(c.nome_fantasia);
-            const cnpj = (c.cnpj_cpf || '').replace(/\D/g, '');
-            const termoLimpo = termo.replace(/\D/g, '');
-            if (razao.includes(termo) || fantasia.includes(termo) || cnpj.includes(termoLimpo)) {
-                resultadosFiltro.push(c);
-            }
-        }
-        console.log(`  🔍 Após aplicar filtro: ${resultadosFiltro.length} clientes encontrados`);
-        if (resultadosFiltro.length > 0) {
-            console.log(`  → Primeiros 3 resultados:`);
-            resultadosFiltro.slice(0, 3).forEach((c, idx) => {
-                console.log(`     ${idx + 1}. ${c.razao_social || c.nome_fantasia} | ${c.cnpj_cpf}`);
-            });
-        } else {
-            console.log(`  ⚠️ Nenhum cliente passou pelo filtro com o termo "${termo}"`);
-        }
-        const clientesRetorno = resultadosFiltro
-            .slice(0, 100)
-            .map(c => ({
+            const clientesOmie = data.clientes_cadastro || [];
+            console.log(`  ✅ API retornou ${clientesOmie.length} clientes filtrados`);
+            const clientesRetorno = clientesOmie.map(c => ({
                 nCodCliente: c.codigo_cliente_omie,
                 cNomeFantasia: c.nome_fantasia || '',
                 cRazaoSocial: c.razao_social || '',
@@ -294,30 +198,20 @@ app.post('/api/clientes', async (req, res) => {
                 cCondPagto: c.recomendacoes?.numero_parcelas || '',
                 cCondPagtoDesc: c.recomendacoes?.numero_parcelas ? `${c.recomendacoes.numero_parcelas}x` : 'Padrão'
             }));
-        console.log(`  ✅ Retornando ${clientesRetorno.length} clientes ao frontend\n`);
-        res.json({
-            clientes: clientesRetorno,
-            debug: {
-                termo_buscado: termo,
-                total_api: clientesOmie.length,
-                total_filtrados: clientesRetorno.length,
-                timestamp: new Date().toISOString(),
-                versao: '2.1-paginada'
-            }
-        });
-    } catch (error) {
-        console.error('❌ Erro ao buscar formas de pagamento:', error.message);
-        res.status(500).json({ erro: error.message, formas: [] });
-    }
-});
-
-// Endpoint para listar tabelas de preços
-app.post('/api/tabelas-precos', async (req, res) => {
-    try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000);
-        
-        console.log('📊 Buscando tabelas de preços...');
+            res.json({
+                clientes: clientesRetorno,
+                debug: {
+                    termo_buscado: termo,
+                    total_api: clientesOmie.length,
+                    total_filtrados: clientesRetorno.length,
+                    timestamp: new Date().toISOString(),
+                    versao: '3.0-filtro-omie'
+                }
+            });
+        } catch (error) {
+            console.error('❌ Erro ao buscar clientes:', error.message);
+            res.status(500).json({ erro: error.message, clientes: [] });
+        }
         
         const response = await fetch("https://app.omie.com.br/api/v1/produtos/tabelaprecos/", {
             method: 'POST',
