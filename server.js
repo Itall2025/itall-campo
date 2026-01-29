@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import fetch from 'node-fetch';
+import dotenv from 'dotenv';
+dotenv.config();
 
 const app = express();
 app.use(cors());
@@ -217,96 +219,83 @@ app.post('/api/clientes', async (req, res) => {
         const data = await response.json();
         console.log(`  ✅ API retornou ${data.clientes_cadastro?.length || 0} clientes`);
         
-        let clientesRetorno = [];
-        
-        if (data.clientes_cadastro && Array.isArray(data.clientes_cadastro)) {
-            // APLICAR FILTRO LOCALMENTE
-            console.log(`  🔍 Aplicando filtro com termo: "${termo}"`);
-            console.log(`  → Total de clientes antes do filtro: ${data.clientes_cadastro.length}`);
-            console.log(`  → Exemplo de cliente:`, {
-                razao: data.clientes_cadastro[0]?.razao_social,
-                fantasia: data.clientes_cadastro[0]?.nome_fantasia
+        // Busca paginada de clientes OMIE
+        let pagina = 1;
+        let clientesOmie = [];
+        let totalPaginas = 1;
+        const registrosPorPagina = 500;
+        do {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 30000);
+            const response = await fetch("https://app.omie.com.br/api/v1/geral/clientes/", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Mozilla/5.0'
+                },
+                signal: controller.signal,
+                body: JSON.stringify({
+                    "call": "ListarClientes",
+                    "app_key": CONFIG.key,
+                    "app_secret": CONFIG.secret,
+                    "param": [{
+                        "pagina": pagina,
+                        "registros_por_pagina": registrosPorPagina,
+                        "apenas_importado_api": "N"
+                    }]
+                })
             });
-            
-            const resultadosFiltro = [];
-            
-            // Filtrar manualmente para ter mais controle
-            for (const c of data.clientes_cadastro) {
-                const razao = (c.razao_social || '').toLowerCase().trim();
-                const fantasia = (c.nome_fantasia || '').toLowerCase().trim();
-                const cnpj = (c.cnpj_cpf || '').replace(/\D/g, '');
-                const termoLimpo = termo.replace(/\D/g, '');
-                
-                // Verificar se o termo está em algum desses campos
-                if (razao.includes(termo) || fantasia.includes(termo) || cnpj.includes(termoLimpo)) {
-                    resultadosFiltro.push(c);
-                    
-                    // Log do primeiro match
-                    if (resultadosFiltro.length === 1) {
-                        console.log(`  ✅ PRIMEIRO MATCH:`, {
-                            razao: c.razao_social,
-                            fantasia: c.nome_fantasia,
-                            razao_match: razao.includes(termo),
-                            fantasia_match: fantasia.includes(termo),
-                            cnpj_match: cnpj.includes(termoLimpo)
-                        });
-                    }
-                }
+            clearTimeout(timeout);
+            const data = await response.json();
+            if (data.clientes_cadastro && Array.isArray(data.clientes_cadastro)) {
+                clientesOmie = clientesOmie.concat(data.clientes_cadastro);
             }
-            
-            console.log(`  🔍 Após aplicar filtro: ${resultadosFiltro.length} clientes encontrados`);
-            
-            if (resultadosFiltro.length > 0) {
-                console.log(`  → Primeiros 3 resultados:`);
-                resultadosFiltro.slice(0, 3).forEach((c, idx) => {
-                    console.log(`     ${idx + 1}. ${c.razao_social || c.nome_fantasia} | ${c.cnpj_cpf}`);
-                });
-            } else {
-                console.log(`  ⚠️ Nenhum cliente passou pelo filtro com o termo "${termo}"`);
+            totalPaginas = data.total_de_paginas || 1;
+            pagina++;
+        } while (pagina <= totalPaginas);
+
+        console.log(`  ✅ API retornou ${clientesOmie.length} clientes no total`);
+        // APLICAR FILTRO LOCALMENTE
+        const resultadosFiltro = [];
+        for (const c of clientesOmie) {
+            const razao = (c.razao_social || '').toLowerCase().trim();
+            const fantasia = (c.nome_fantasia || '').toLowerCase().trim();
+            const cnpj = (c.cnpj_cpf || '').replace(/\D/g, '');
+            const termoLimpo = termo.replace(/\D/g, '');
+            if (razao.includes(termo) || fantasia.includes(termo) || cnpj.includes(termoLimpo)) {
+                resultadosFiltro.push(c);
             }
-            
-            // Limitar a 20 resultados e mapear
-            clientesRetorno = resultadosFiltro
-                .slice(0, 20)
-                .map(c => ({
-                    nCodCliente: c.codigo_cliente_omie,
-                    cNomeFantasia: c.nome_fantasia || '',
-                    cRazaoSocial: c.razao_social || '',
-                    cCNPJ: c.cnpj_cpf || '',
-                    cCondPagto: c.recomendacoes?.numero_parcelas || '',
-                    cCondPagtoDesc: c.recomendacoes?.numero_parcelas ? `${c.recomendacoes.numero_parcelas}x` : 'Padrão'
-                }));
-                
-            console.log(`  ✅ Retornando ${clientesRetorno.length} clientes ao frontend\n`);
-        } else {
-            console.log(`  ⚠️ Resposta inválida da API\n`);
         }
-        
-        res.json({ 
+        console.log(`  🔍 Após aplicar filtro: ${resultadosFiltro.length} clientes encontrados`);
+        if (resultadosFiltro.length > 0) {
+            console.log(`  → Primeiros 3 resultados:`);
+            resultadosFiltro.slice(0, 3).forEach((c, idx) => {
+                console.log(`     ${idx + 1}. ${c.razao_social || c.nome_fantasia} | ${c.cnpj_cpf}`);
+            });
+        } else {
+            console.log(`  ⚠️ Nenhum cliente passou pelo filtro com o termo "${termo}"`);
+        }
+        const clientesRetorno = resultadosFiltro
+            .slice(0, 20)
+            .map(c => ({
+                nCodCliente: c.codigo_cliente_omie,
+                cNomeFantasia: c.nome_fantasia || '',
+                cRazaoSocial: c.razao_social || '',
+                cCNPJ: c.cnpj_cpf || '',
+                cCondPagto: c.recomendacoes?.numero_parcelas || '',
+                cCondPagtoDesc: c.recomendacoes?.numero_parcelas ? `${c.recomendacoes.numero_parcelas}x` : 'Padrão'
+            }));
+        console.log(`  ✅ Retornando ${clientesRetorno.length} clientes ao frontend\n`);
+        res.json({
             clientes: clientesRetorno,
             debug: {
                 termo_buscado: termo,
-                total_api: data.clientes_cadastro?.length || 0,
+                total_api: clientesOmie.length,
                 total_filtrados: clientesRetorno.length,
                 timestamp: new Date().toISOString(),
-                versao: '2.0'
+                versao: '2.1-paginada'
             }
         });
-    } catch (error) {
-        console.error('❌ Erro ao buscar clientes:', error.message);
-        res.status(500).json({ erro: error.message, clientes: [] });
-    }
-});
-
-// Endpoint para listar formas de pagamento
-app.post('/api/formas-pagamento', async (req, res) => {
-    try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000);
-        
-        console.log('💳 Buscando formas de pagamento...');
-        
-        const response = await fetch("https://app.omie.com.br/api/v1/produtos/formaspagvendas/", {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
