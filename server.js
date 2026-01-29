@@ -273,7 +273,7 @@ app.post('/api/clientes', async (req, res) => {
                     console.error('❌ Erro ao buscar clientes:', error.message);
                     res.status(500).json({ erro: error.message, clientes: [] });
                 }
-                cliente: cliente
+            });
             });
         }
         
