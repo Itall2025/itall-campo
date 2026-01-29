@@ -180,7 +180,16 @@ app.post('/api/estoque', async (req, res) => {
 app.post('/api/clientes', async (req, res) => {
     try {
         const { buscar } = req.body;
-        const termo = (buscar || '').toLowerCase().trim();
+        // Função para remover acentos e espaços extras
+        function normalizar(str) {
+            return (str || '')
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/\p{Diacritic}/gu, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+        const termo = normalizar(buscar);
         
         console.log(`\n👥 BUSCA DE CLIENTES`);
         console.log(`  Termo recebido: "${buscar}"`);
@@ -258,8 +267,8 @@ app.post('/api/clientes', async (req, res) => {
         // APLICAR FILTRO LOCALMENTE
         const resultadosFiltro = [];
         for (const c of clientesOmie) {
-            const razao = (c.razao_social || '').toLowerCase().trim();
-            const fantasia = (c.nome_fantasia || '').toLowerCase().trim();
+            const razao = normalizar(c.razao_social);
+            const fantasia = normalizar(c.nome_fantasia);
             const cnpj = (c.cnpj_cpf || '').replace(/\D/g, '');
             const termoLimpo = termo.replace(/\D/g, '');
             if (razao.includes(termo) || fantasia.includes(termo) || cnpj.includes(termoLimpo)) {
@@ -276,7 +285,7 @@ app.post('/api/clientes', async (req, res) => {
             console.log(`  ⚠️ Nenhum cliente passou pelo filtro com o termo "${termo}"`);
         }
         const clientesRetorno = resultadosFiltro
-            .slice(0, 20)
+            .slice(0, 100)
             .map(c => ({
                 nCodCliente: c.codigo_cliente_omie,
                 cNomeFantasia: c.nome_fantasia || '',
@@ -296,39 +305,6 @@ app.post('/api/clientes', async (req, res) => {
                 versao: '2.1-paginada'
             }
         });
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'User-Agent': 'Mozilla/5.0'
-            },
-            signal: controller.signal,
-            body: JSON.stringify({
-                "call": "ListarFormasPagVendas",
-                "app_key": CONFIG.key,
-                "app_secret": CONFIG.secret,
-                "param": [{
-                    "pagina": 1,
-                    "registros_por_pagina": 100
-                }]
-            })
-        });
-        clearTimeout(timeout);
-        
-        const data = await response.json();
-        
-        if (data.cadastros && Array.isArray(data.cadastros)) {
-            console.log(`  ✅ ${data.cadastros.length} formas de pagamento encontradas`);
-            res.json({ 
-                formas: data.cadastros.map(f => ({
-                    codigo: f.cCodigo,
-                    descricao: f.cDescricao,
-                    parcelas: f.nQtdeParc
-                }))
-            });
-        } else {
-            console.log('  ⚠️ Nenhuma forma de pagamento encontrada');
-            res.json({ formas: [] });
-        }
     } catch (error) {
         console.error('❌ Erro ao buscar formas de pagamento:', error.message);
         res.status(500).json({ erro: error.message, formas: [] });
