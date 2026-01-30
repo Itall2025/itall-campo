@@ -23,7 +23,6 @@
         <section class="bg-white p-4 rounded-2xl shadow-sm border-l-8 border-blue-600">
             <div class="flex gap-2 mb-2">
                 <select id="tabela-precos" onchange="mudarTabela()" class="flex-1 border p-3 rounded-xl text-sm bg-gray-50 outline-none font-bold">
-                    <option value="">📊 Tabela de Preços Padrão</option>
                 </select>
                 <select id="forma-pagamento" onchange="mudarFormaPagamento()" class="flex-1 border p-3 rounded-xl text-sm bg-gray-50 outline-none font-bold">
                     <option value="">💳 Forma de Pagamento</option>
@@ -174,7 +173,7 @@
                             nCodProd: p.nCodProd,
                             nome: p.cDescricao,
                             preco: p.nPrecoUnitario || 0,
-                            foto: p.url_imagem || null,
+                            foto: p.url_imagem || p.cUrlImagem || p.cImagemURL || p.cImagem || p.imagem || '',
                             saldo: p.nSaldo || 0
                         };
                         return produto;
@@ -215,8 +214,8 @@
                 const precoAtual = getPrecoAtual(p);
                 card.innerHTML = `
                     <div class="flex flex-col items-center gap-1">
-                        <img src="${p.foto}" class="product-img rounded border" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                        <div class="w-16 h-16 rounded border bg-gray-100 items-center justify-center text-[8px] font-bold text-center p-1 text-gray-500" style="display:none;">SEM FOTO</div>
+                        <img src="${p.foto}" class="product-img rounded border" style="display:${p.foto ? 'block' : 'none'};" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div class="w-16 h-16 rounded border bg-gray-100 items-center justify-center text-[8px] font-bold text-center p-1 text-gray-500" style="display:${p.foto ? 'none' : 'flex'};">SEM FOTO</div>
                         <span class="text-[8px] text-gray-500 font-bold">${p.id}</span>
                     </div>
                     <div class="flex-1 text-left">
@@ -436,7 +435,6 @@
             doc.setTextColor(100);
             doc.text(`Cliente: ${cliente}`, 14, 30);
             doc.text(`Data: ${new Date().toLocaleDateString('pt-BR')}`, 14, 35);
-            doc.text(`Tabela de Preços: ${tabelaInfo || 'Padrão'}`, 14, 40);
             doc.text(`Forma de Pagamento: ${formaPagInfo || 'Não informada'}`, 14, 45);
             
             const rows = Object.keys(carrinho).map(id => {
@@ -460,9 +458,8 @@
 
         function enviarWhatsApp() {
             const cliente = document.getElementById('razao-social').value || "Cliente Itall";
-            const tabelaInfo = tabelaSelecionada ? ` - ${tabelaSelecionada}` : '';
             const formaPagInfo = formaPagamentoSelecionada ? ` - ${formaPagamentoSelecionada}` : '';
-            let msg = `*Orçamento Itall Comércio*%0A*Cliente:* ${cliente}%0A*Tabela:* ${tabelaInfo || 'Padrão'}%0A*Forma de Pagamento:* ${formaPagInfo || 'Não informada'}%0A%0A*Itens:*%0A`;
+            let msg = `*Orçamento Itall Comércio*%0A*Cliente:* ${cliente}%0A*Forma de Pagamento:* ${formaPagInfo || 'Não informada'}%0A%0A*Itens:*%0A`;
             Object.keys(carrinho).forEach(id => {
                 const p = produtos.find(prod => prod.id == id);
                 const precoAtual = getPrecoAtual(p);
@@ -476,3 +473,4 @@
     </script>
 </body>
 </html>
+
