@@ -12,6 +12,58 @@ let cacheEstoque = null;
 let cacheTime = 0;
 const CACHE_DURATION = 60000; // 1 minuto
 
+async function listarProdutosComImagem() {
+    let paginaAtual = 1;
+    let totalPaginas = 1;
+    let produtos = [];
+
+    while (paginaAtual <= totalPaginas) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+
+        console.log(`  → Buscando produtos (imagens) página ${paginaAtual}...`);
+
+        const response = await fetch("https://app.omie.com.br/api/v1/geral/produtos/", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0'
+            },
+            signal: controller.signal,
+            body: JSON.stringify({
+                "call": "ListarProdutos",
+                "app_key": CONFIG.key,
+                "app_secret": CONFIG.secret,
+                "param": [{ "pagina": paginaAtual, "registros_por_pagina": 500, "filtrar_apenas_ativo": "S" }]
+            })
+        });
+
+        clearTimeout(timeout);
+
+        const data = await response.json();
+        totalPaginas = data.nTotPaginas || data.total_de_paginas || 1;
+
+        const lista = data.produtos || data.produto_servico || data.produto || [];
+        if (Array.isArray(lista) && lista.length) {
+            produtos = produtos.concat(lista);
+            console.log(`  ✅ Produtos página ${paginaAtual}/${totalPaginas}: ${lista.length} itens`);
+        }
+
+        paginaAtual++;
+    }
+
+    const mapa = new Map();
+    produtos.forEach((p) => {
+        const codigo = p.codigo || p.cCodigo || p.codigo_produto || p.codigo_produto_servico;
+        const url = p.url_imagem || p.urlImagem || p.cUrlImagem || p.imagem || p.urlImagemProduto;
+        if (codigo && url) {
+            mapa.set(String(codigo), url);
+        }
+    });
+
+    return mapa;
+}
+
 // Endpoint para testar conexão com API
 app.get('/api/test', (req, res) => {
     res.json({ status: 'ok', message: 'Servidor rodando corretamente' });
@@ -68,6 +120,22 @@ app.post('/api/estoque', async (req, res) => {
         }
         
         console.log(`✅ Total de ${todosOsProdutos.length} produtos carregados`);
+
+        let mapaImagens = null;
+        try {
+            mapaImagens = await listarProdutosComImagem();
+            console.log(`🖼️ Imagens encontradas: ${mapaImagens.size}`);
+        } catch (error) {
+            console.log('⚠️ Falha ao buscar imagens dos produtos:', error.message);
+        }
+
+        if (mapaImagens && mapaImagens.size > 0) {
+            todosOsProdutos = todosOsProdutos.map((p) => {
+                const codigo = p.cCodigo || p.codigo || p.codigo_produto || p.codigo_produto_servico;
+                const urlImagem = mapaImagens.get(String(codigo));
+                return urlImagem ? { ...p, url_imagem: p.url_imagem || urlImagem } : p;
+            });
+        }
         
         const response = {
             nTotRegistros: todosOsProdutos.length,

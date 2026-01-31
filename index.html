@@ -53,11 +53,14 @@
 
     <script>
         const CONFIG = { key: '4695613971048', secret: 'adcacd22b1c64d9520965dac570b3afd' };
+        const API_BASE = (window.ITALL_API_BASE || '').replace(/\/+$/g, '');
+        const isGithubPages = window.location.hostname.endsWith('github.io');
+        const apiUrl = (path) => `${API_BASE}${path}`;
         let produtos = [], estoqueSaldos = {}, carrinho = {};
 
         async function sincronizar() {
             try {
-                const resEst = await fetch("/api/estoque", {
+                const resEst = await fetch(apiUrl("/api/estoque"), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({})
@@ -69,11 +72,15 @@
                 if (dataEst.produtos && dataEst.produtos.length > 0) {
                     // Usar os produtos do estoque - CAMPO CORRETO É nPrecoUnitario
                     produtos = dataEst.produtos.map(p => {
+                        let foto = p.url_imagem || p.urlImagem || p.imagem || null;
+                        if (foto && foto.startsWith('http://')) {
+                            foto = foto.replace('http://', 'https://');
+                        }
                         const produto = {
                             id: p.cCodigo,
                             nome: p.cDescricao,
                             preco: p.nPrecoUnitario || 0,
-                            foto: p.url_imagem || null,
+                            foto,
                             saldo: p.nSaldo || 0
                         };
                         return produto;
@@ -86,7 +93,10 @@
                 }
             } catch (e) {
                 console.error('Erro na sincronização:', e);
-                document.getElementById('lista-produtos').innerHTML = `<div class="p-10 text-center font-bold"><p class="text-red-600 mb-4">⚠️ Erro ao sincronizar estoque</p><p class="text-gray-600 text-sm mb-4">${e.message}</p><button onclick="sincronizar()" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold">Tentar Novamente</button></div>`;
+                const hint = (!API_BASE && isGithubPages)
+                    ? '<p class="text-gray-600 text-xs mt-2">Defina <b>window.ITALL_API_BASE</b> com a URL do backend (ex.: https://seu-backend.onrender.com).</p>'
+                    : '';
+                document.getElementById('lista-produtos').innerHTML = `<div class="p-10 text-center font-bold"><p class="text-red-600 mb-4">⚠️ Erro ao sincronizar estoque</p><p class="text-gray-600 text-sm mb-4">${e.message}</p>${hint}<button onclick="sincronizar()" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold">Tentar Novamente</button></div>`;
             }
         }
 
@@ -134,7 +144,7 @@
         async function buscarCNPJ() {
             const cnpj = document.getElementById('cnpj-input').value;
             try {
-                const res = await fetch(`/api/cnpj/${cnpj}`);
+                const res = await fetch(apiUrl(`/api/cnpj/${cnpj}`));
                 const data = await res.json();
                 document.getElementById('razao-social').value = data.estabelecimento?.razao_social || data.razao_social || "Não encontrado";
             } catch (e) { 
