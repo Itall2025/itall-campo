@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: itall-campo
+    runtime: node
+    startCommand: npm start
+    buildCommand: npm install
+    plan: free
+    region: sfo
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: OMIE_API_KEY
+        sync: false
+      - key: OMIE_API_SECRET
+        sync: false

@@ -22,10 +22,20 @@
     <main class="p-4 max-w-5xl mx-auto space-y-4">
         <section class="bg-white p-4 rounded-2xl shadow-sm border-l-8 border-blue-600">
             <div class="flex gap-2 mb-2">
-                <input type="number" id="cnpj-input" placeholder="CNPJ do Cliente" class="flex-1 border p-3 rounded-xl text-sm bg-gray-50 outline-none">
-                <button onclick="buscarCNPJ()" class="bg-blue-600 hover:bg-blue-800 text-white px-6 rounded-xl font-bold text-xs uppercase transition-all">Buscar</button>
+                <select id="tabela-precos" onchange="mudarTabela()" class="flex-1 border p-3 rounded-xl text-sm bg-gray-50 outline-none font-bold">
+                </select>
+                <select id="forma-pagamento" onchange="mudarFormaPagamento()" class="flex-1 border p-3 rounded-xl text-sm bg-gray-50 outline-none font-bold">
+                    <option value="">💳 Forma de Pagamento</option>
+                </select>
             </div>
-            <input type="text" id="razao-social" placeholder="Razão Social" class="w-full border p-2 rounded-xl text-sm bg-gray-100 font-bold text-blue-900" readonly>
+            <div class="flex gap-2 mb-2">
+                <input type="text" id="cnpj-input" placeholder="CNPJ do Cliente" class="flex-1 border p-3 rounded-xl text-sm bg-gray-50 outline-none">
+                <button onclick="buscarCNPJ()" class="bg-blue-600 hover:bg-blue-800 text-white px-6 rounded-xl font-bold text-xs uppercase transition-all">Buscar CNPJ</button>
+            </div>
+            <div class="relative">
+                <input type="text" id="razao-social" placeholder="Razão Social / Nome do Cliente" class="w-full border p-3 rounded-xl text-sm bg-gray-50 font-bold text-blue-900 outline-none" oninput="buscarClientes()">
+                <div id="lista-clientes" class="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-xl mt-1 shadow-lg max-h-48 overflow-y-auto z-10" style="display:none;"></div>
+            </div>
         </section>
 
         <div id="lista-produtos" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -57,6 +67,97 @@
         const isGithubPages = window.location.hostname.endsWith('github.io');
         const apiUrl = (path) => `${API_BASE}${path}`;
         let produtos = [], estoqueSaldos = {}, carrinho = {};
+        let tabelaSelecionada = null;
+        let precosTabela = {};
+        let formaPagamentoSelecionada = null;
+        let debounceTimer = null;
+
+        async function carregarTabelasPrecos() {
+            try {
+                const res = await fetch("/api/tabelas-precos", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await res.json();
+                
+                const select = document.getElementById('tabela-precos');
+                if (data.tabelas && data.tabelas.length > 0) {
+                    data.tabelas.forEach(tabela => {
+                        const option = document.createElement('option');
+                        option.value = tabela.id;
+                        option.textContent = `📊 ${tabela.nome}${tabela.ativa ? '' : ' (inativa)'}`;
+                        option.disabled = !tabela.ativa;
+                        select.appendChild(option);
+                    });
+                    console.log(`✅ ${data.tabelas.length} tabelas de preço carregadas`);
+                }
+            } catch (e) {
+                console.error('Erro ao carregar tabelas:', e);
+            }
+        }
+
+        async function carregarFormasPagamento() {
+            try {
+                const res = await fetch("/api/formas-pagamento", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await res.json();
+                
+                const select = document.getElementById('forma-pagamento');
+                if (data.formas && data.formas.length > 0) {
+                    data.formas.forEach(forma => {
+                        const option = document.createElement('option');
+                        option.value = forma.codigo;
+                        const parcelas = forma.parcelas > 1 ? ` (${forma.parcelas}x)` : '';
+                        option.textContent = `💳 ${forma.descricao}${parcelas}`;
+                        select.appendChild(option);
+                    });
+                    console.log(`✅ ${data.formas.length} formas de pagamento carregadas`);
+                }
+            } catch (e) {
+                console.error('Erro ao carregar formas de pagamento:', e);
+            }
+        }
+
+        function mudarFormaPagamento() {
+            const selectElement = document.getElementById('forma-pagamento');
+            formaPagamentoSelecionada = selectElement.options[selectElement.selectedIndex].text;
+            console.log(`✅ Forma de pagamento selecionada: ${formaPagamentoSelecionada}`);
+        }
+
+        async function mudarTabela() {
+            const selectElement = document.getElementById('tabela-precos');
+            const tabelaId = selectElement.value;
+            
+            if (!tabelaId) {
+                tabelaSelecionada = null;
+                precosTabela = {};
+                render();
+                return;
+            }
+            
+            try {
+                const res = await fetch(`/api/tabela-precos/${tabelaId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await res.json();
+                
+                tabelaSelecionada = selectElement.options[selectElement.selectedIndex].text;
+                precosTabela = data.precos || {};
+                console.log(`✅ Tabela selecionada: ${tabelaSelecionada}`);
+                console.log(`   Preços carregados: ${Object.keys(precosTabela).length} produtos`);
+                render();
+            } catch (e) {
+                console.error('Erro ao carregar preços da tabela:', e);
+                tabelaSelecionada = null;
+                precosTabela = {};
+            }
+        }
 
         async function sincronizar() {
             try {
@@ -67,10 +168,8 @@
                 });
                 const dataEst = await resEst.json();
                 console.log('Estoque recebido:', dataEst.produtos?.length || 0, 'produtos');
-                console.log('Exemplo de produto:', dataEst.produtos?.[0]);
                 
                 if (dataEst.produtos && dataEst.produtos.length > 0) {
-                    // Usar os produtos do estoque - CAMPO CORRETO É nPrecoUnitario
                     produtos = dataEst.produtos.map(p => {
                         let foto = p.url_imagem || p.urlImagem || p.imagem || null;
                         if (foto && foto.startsWith('http://')) {
@@ -78,15 +177,24 @@
                         }
                         const produto = {
                             id: p.cCodigo,
+                            nCodProd: p.nCodProd,
                             nome: p.cDescricao,
                             preco: p.nPrecoUnitario || 0,
+<<<<<<< HEAD
                             foto,
+=======
+                            foto: p.url_imagem || p.cUrlImagem || p.cImagemURL || p.cImagem || p.imagem || '',
+>>>>>>> 0fc8f46120ef5b5ad9d41728318968c4000a2c62
                             saldo: p.nSaldo || 0
                         };
                         return produto;
                     });
                     console.log('Primeiro produto com preço:', produtos[0]);
                     document.getElementById('contagem-produtos').innerText = `${produtos.length} ITENS ATIVOS`;
+                    
+                    // Carregar tabelas de preços e formas de pagamento
+                    await carregarTabelasPrecos();
+                    await carregarFormasPagamento();
                     render();
                 } else {
                     throw new Error('Nenhum produto encontrado no estoque');
@@ -100,6 +208,15 @@
             }
         }
 
+        function getPrecoAtual(produto) {
+            // Se tabela selecionada, usar preço da tabela
+            if (tabelaSelecionada && precosTabela[produto.nCodProd]) {
+                return precosTabela[produto.nCodProd];
+            }
+            // Caso contrário, usar preço padrão
+            return produto.preco;
+        }
+
         function render() {
             const termo = document.getElementById('busca-produto').value.toLowerCase();
             const lista = document.getElementById('lista-produtos');
@@ -108,48 +225,216 @@
             produtos.filter(p => p.nome.toLowerCase().includes(termo)).forEach(p => {
                 const card = document.createElement('div');
                 card.className = 'bg-white p-3 rounded-2xl flex gap-3 items-center shadow-sm border border-gray-100';
-                const temFoto = p.foto && p.foto !== 'https://via.placeholder.com/100?text=SEM+FOTO';
+                const precoAtual = getPrecoAtual(p);
                 card.innerHTML = `
                     <div class="flex flex-col items-center gap-1">
-                        <img src="${p.foto}" class="product-img rounded border" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                        <div class="w-16 h-16 rounded border bg-gray-100 items-center justify-center text-[8px] font-bold text-center p-1 text-gray-500" style="display:none;">SEM FOTO</div>
+                        <img src="${p.foto}" class="product-img rounded border" style="display:${p.foto ? 'block' : 'none'};" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div class="w-16 h-16 rounded border bg-gray-100 items-center justify-center text-[8px] font-bold text-center p-1 text-gray-500" style="display:${p.foto ? 'none' : 'flex'};">SEM FOTO</div>
                         <span class="text-[8px] text-gray-500 font-bold">${p.id}</span>
                     </div>
                     <div class="flex-1 text-left">
                         <h3 class="font-bold text-gray-800 text-[11px] uppercase leading-tight mb-1">${p.nome}</h3>
-                        <p class="text-blue-600 font-black text-base">R$ ${p.preco.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                        <p class="text-blue-600 font-black text-base">R$ ${precoAtual.toFixed(2).replace('.', ',')}</p>
                         <p class="text-[9px] ${p.saldo > 0 ? 'text-green-600' : 'text-red-500'} font-bold">Estoque: ${p.saldo}</p>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <button onclick="add('${p.id}', -1)" class="bg-gray-100 text-gray-400 w-8 h-8 rounded-lg font-bold">-</button>
-                        <span class="font-bold text-blue-900 text-sm w-4 text-center">${carrinho[p.id] || 0}</span>
-                        <button onclick="add('${p.id}', 1)" class="bg-blue-900 text-white w-8 h-8 rounded-lg font-bold shadow-md">+</button>
+                    <div class="flex items-center gap-1">
+                        <button onclick="add('${p.id}', -1)" class="bg-gray-100 text-gray-400 w-7 h-7 rounded-lg font-bold text-sm">−</button>
+                        <input type="number" min="0" value="${carrinho[p.id] || 0}" onchange="updateQtd('${p.id}', this.value)" class="font-bold text-blue-900 text-sm w-12 text-center border border-gray-300 rounded px-1">
+                        <button onclick="add('${p.id}', 1)" class="bg-blue-900 text-white w-7 h-7 rounded-lg font-bold text-sm shadow-md">+</button>
                     </div>`;
                 lista.appendChild(card);
             });
+        }
+        
+        function updateQtd(id, value) {
+            const qtd = parseInt(value) || 0;
+            if (qtd <= 0) {
+                delete carrinho[id];
+            } else {
+                carrinho[id] = qtd;
+            }
+            render();
+            atualizarTotal();
         }
 
         function add(id, delta) {
             carrinho[id] = (carrinho[id] || 0) + delta;
             if(carrinho[id] <= 0) delete carrinho[id];
             render();
+            atualizarTotal();
+        }
+
+        function atualizarTotal() {
             let total = 0;
             Object.keys(carrinho).forEach(id => {
                 const p = produtos.find(prod => prod.id == id);
-                total += p.preco * carrinho[id];
+                const precoAtual = getPrecoAtual(p);
+                total += precoAtual * carrinho[id];
             });
-            document.getElementById('total-geral').innerText = `R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
+            document.getElementById('total-geral').innerText = `R$ ${total.toFixed(2).replace('.', ',')}`;
         }
 
+        async function buscarClientes() {
+            const termo = document.getElementById('razao-social').value.trim();
+            const listaDiv = document.getElementById('lista-clientes');
+            
+            // Limpar debounce anterior
+            if (debounceTimer) clearTimeout(debounceTimer);
+            
+            if (termo.length < 2) {
+                listaDiv.style.display = 'none';
+                return;
+            }
+            
+            // Debounce: esperar 500ms após último input antes de buscar
+            debounceTimer = setTimeout(async () => {
+                try {
+                    console.log(`🔍 Buscando clientes com termo: "${termo}"`);
+                    
+                    const res = await fetch("/api/clientes", {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Cache-Control': 'no-cache'
+                        },
+                        body: JSON.stringify({ buscar: termo })
+                    });
+                    
+                    if (!res.ok) throw new Error(`Erro HTTP: ${res.status}`);
+                    
+                    const data = await res.json();
+                    console.log(`  → Total de clientes retornados: ${data.clientes?.length || 0}`);
+                    
+                    // Mostrar debug info do servidor
+                    if (data.debug) {
+                        console.log(`  📊 DEBUG DO SERVIDOR:`);
+                        console.log(`     Versão: ${data.debug.versao}`);
+                        console.log(`     Termo buscado: "${data.debug.termo_buscado}"`);
+                        console.log(`     Total API OMIE: ${data.debug.total_api}`);
+                        console.log(`     Total filtrado: ${data.debug.total_filtrados}`);
+                        console.log(`     Timestamp: ${data.debug.timestamp}`);
+                    }
+                    
+                    // Log super detalhado
+                    if (data.clientes && data.clientes.length > 0) {
+                        console.log(`  → Cliente 1:`, data.clientes[0]);
+                        console.log(`  → Cliente 2:`, data.clientes[1]);
+                        console.log(`  → Cliente 3:`, data.clientes[2]);
+                    }
+                    
+                    if (data.clientes && data.clientes.length > 0) {
+                        listaDiv.innerHTML = '';
+                        data.clientes.forEach(cliente => {
+                            const div = document.createElement('div');
+                            div.className = 'p-3 border-b hover:bg-blue-50 cursor-pointer text-sm transition-colors';
+                            const cnpj = cliente.cCNPJ || 'CNPJ não informado';
+                            const condicao = cliente.cCondPagtoDesc || 'Não informada';
+                            div.innerHTML = `
+                                <div class="font-bold text-blue-900">${cliente.cRazaoSocial || cliente.cNomeFantasia}</div>
+                                <div class="text-gray-600 text-xs">${cnpj}</div>
+                                <div class="text-gray-500 text-xs">📅 ${condicao}</div>
+                            `;
+                            div.onclick = () => selecionarCliente(cliente);
+                            listaDiv.appendChild(div);
+                        });
+                        listaDiv.style.display = 'block';
+                        console.log(`  ✅ ${data.clientes.length} clientes exibidos`);
+                    } else {
+                        listaDiv.innerHTML = '<div class="p-3 text-gray-500 text-sm text-center">Nenhum cliente encontrado</div>';
+                        listaDiv.style.display = 'block';
+                        console.log('  ℹ️ Nenhum cliente encontrado com esse termo');
+                    }
+                } catch (e) {
+                    console.error('❌ Erro ao buscar clientes:', e);
+                    listaDiv.innerHTML = '<div class="p-3 text-red-500 text-sm text-center">Erro ao buscar clientes</div>';
+                    listaDiv.style.display = 'block';
+                }
+            }, 500); // Debounce de 500ms
+        }
+
+        function selecionarCliente(cliente) {
+            document.getElementById('razao-social').value = cliente.cRazaoSocial || cliente.cNomeFantasia;
+            document.getElementById('cnpj-input').value = cliente.cCNPJ || '';
+            document.getElementById('lista-clientes').style.display = 'none';
+            console.log(`✅ Cliente selecionado:`, cliente.cRazaoSocial || cliente.cNomeFantasia);
+            
+            // Preencher forma de pagamento do cliente
+            if (cliente.cCondPagto) {
+                const selectFormaPag = document.getElementById('forma-pagamento');
+                const options = Array.from(selectFormaPag.options);
+                const optionCliente = options.find(opt => opt.textContent.includes(cliente.cCondPagtoDesc));
+                if (optionCliente) {
+                    selectFormaPag.value = optionCliente.value;
+                    mudarFormaPagamento();
+                    console.log(`✅ Forma de pagamento do cliente: ${cliente.cCondPagtoDesc}`);
+                }
+            }
+        }
+        
+        // Fechar lista de clientes ao clicar fora
+        document.addEventListener('click', function(event) {
+            const listaDiv = document.getElementById('lista-clientes');
+            const razaoInput = document.getElementById('razao-social');
+            
+            if (!listaDiv.contains(event.target) && !razaoInput.contains(event.target)) {
+                listaDiv.style.display = 'none';
+            }
+        });
+
         async function buscarCNPJ() {
-            const cnpj = document.getElementById('cnpj-input').value;
+            const cnpj = document.getElementById('cnpj-input').value.replace(/\D/g, ''); // Remove caracteres não-numéricos
+            
+            if (!cnpj || cnpj.length < 11) {
+                alert('Por favor, informe um CNPJ válido com 11+ dígitos.');
+                return;
+            }
+            
             try {
+<<<<<<< HEAD
                 const res = await fetch(apiUrl(`/api/cnpj/${cnpj}`));
+=======
+                console.log(`🔎 Buscando cliente com CNPJ: ${cnpj}`);
+                
+                const res = await fetch(`/api/cnpj/${cnpj}`);
+                
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+                
+>>>>>>> 0fc8f46120ef5b5ad9d41728318968c4000a2c62
                 const data = await res.json();
-                document.getElementById('razao-social').value = data.estabelecimento?.razao_social || data.razao_social || "Não encontrado";
+                console.log(`  → Resposta do servidor:`, data);
+                
+                if (data.sucesso && data.cliente) {
+                    const cliente = data.cliente;
+                    const origem = data.origem === 'OMIE' ? '(Cadastrado no OMIE)' : '(Encontrado em registro público)';
+                    
+                    document.getElementById('razao-social').value = cliente.razao_social || cliente.nome_fantasia || '';
+                    document.getElementById('cnpj-input').value = cliente.cnpj_cpf || '';
+                    
+                    // Preencher forma de pagamento se disponível
+                    if (cliente.recomendacoes?.numero_parcelas) {
+                        const selectFormaPag = document.getElementById('forma-pagamento');
+                        const parcelas = cliente.recomendacoes.numero_parcelas;
+                        const options = Array.from(selectFormaPag.options);
+                        const optionCliente = options.find(opt => opt.textContent.includes(parcelas + 'x') || opt.textContent.includes(parcelas));
+                        if (optionCliente) {
+                            selectFormaPag.value = optionCliente.value;
+                            mudarFormaPagamento();
+                            console.log(`✅ Forma de pagamento preenchida: ${parcelas}x`);
+                        }
+                    }
+                    
+                    console.log(`✅ Cliente carregado com sucesso: ${cliente.razao_social}`);
+                    alert(`✅ Cliente encontrado ${origem}\n\n${cliente.razao_social}`);
+                } else {
+                    console.log('  ℹ️ Cliente não encontrado com esse CNPJ');
+                    alert('❌ Cliente não encontrado.\n\nVerifique o CNPJ e tente novamente.');
+                    document.getElementById('razao-social').value = '';
+                }
             } catch (e) { 
-                console.error('Erro ao buscar CNPJ:', e);
-                alert("Erro ao buscar CNPJ. Verifique a conexão.");
+                console.error('❌ Erro ao buscar CNPJ:', e);
+                alert("❌ Erro ao buscar CNPJ.\n\nVerifique se o número está correto ou tente novamente.");
             }
         }
 
@@ -157,6 +442,8 @@
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
             const cliente = document.getElementById('razao-social').value || "Cliente Itall";
+            const tabelaInfo = tabelaSelecionada ? ` - ${tabelaSelecionada}` : '';
+            const formaPagInfo = formaPagamentoSelecionada ? ` - ${formaPagamentoSelecionada}` : '';
             
             doc.setFontSize(18);
             doc.setTextColor(30, 58, 138);
@@ -166,18 +453,21 @@
             doc.setTextColor(100);
             doc.text(`Cliente: ${cliente}`, 14, 30);
             doc.text(`Data: ${new Date().toLocaleDateString('pt-BR')}`, 14, 35);
+            doc.text(`Forma de Pagamento: ${formaPagInfo || 'Não informada'}`, 14, 45);
             
             const rows = Object.keys(carrinho).map(id => {
                 const p = produtos.find(prod => prod.id == id);
-                return [p.nome, carrinho[id], `R$ ${p.preco.toFixed(2)}`, `R$ ${(p.preco * carrinho[id]).toFixed(2)}`];
+                const precoAtual = getPrecoAtual(p);
+                return [p.nome, carrinho[id], `R$ ${precoAtual.toFixed(2).replace('.', ',')}`, `R$ ${(precoAtual * carrinho[id]).toFixed(2).replace('.', ',')}`];
             });
             
+            const totalGeral = document.getElementById('total-geral').innerText;
             doc.autoTable({
-                startY: 40,
+                startY: 50,
                 head: [['Produto', 'Qtd', 'Unitário', 'Total']],
                 body: rows,
                 headStyles: { fillColor: [30, 58, 138] },
-                foot: [['', '', 'TOTAL GERAL', document.getElementById('total-geral').innerText]],
+                foot: [['', '', 'TOTAL GERAL', totalGeral]],
                 footStyles: { fillColor: [240, 240, 240], textColor: [30, 58, 138], fontStyle: 'bold' }
             });
             
@@ -186,10 +476,12 @@
 
         function enviarWhatsApp() {
             const cliente = document.getElementById('razao-social').value || "Cliente Itall";
-            let msg = `*Orçamento Itall Comércio*%0A*Cliente:* ${cliente}%0A%0A*Itens:*%0A`;
+            const formaPagInfo = formaPagamentoSelecionada ? ` - ${formaPagamentoSelecionada}` : '';
+            let msg = `*Orçamento Itall Comércio*%0A*Cliente:* ${cliente}%0A*Forma de Pagamento:* ${formaPagInfo || 'Não informada'}%0A%0A*Itens:*%0A`;
             Object.keys(carrinho).forEach(id => {
                 const p = produtos.find(prod => prod.id == id);
-                msg += `- ${carrinho[id]}x ${p.nome} (R$ ${p.preco.toFixed(2)})%0A`;
+                const precoAtual = getPrecoAtual(p);
+                msg += `- ${carrinho[id]}x ${p.nome} (R$ ${precoAtual.toFixed(2).replace('.', ',')})%0A`;
             });
             msg += `%0A*Total Geral:* ${document.getElementById('total-geral').innerText}`;
             window.open(`https://api.whatsapp.com/send?text=${msg}`);
@@ -199,3 +491,4 @@
     </script>
 </body>
 </html>
+
